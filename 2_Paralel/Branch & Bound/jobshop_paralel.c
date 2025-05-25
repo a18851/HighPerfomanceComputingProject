@@ -1,4 +1,5 @@
-// jobshop_par_bnb_optimized.c
+// Branch & Bound Parallel
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
