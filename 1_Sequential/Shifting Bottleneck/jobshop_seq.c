@@ -22,13 +22,6 @@ typedef struct {
     int num_ops;
 } Job;
 
-typedef struct {
-    int job_id;
-    int op_index;
-    int ready_time;
-    int duration;
-} ScheduledOp;
-
 int find_bottleneck_machine(int num_machines, int *machine_loads) {
     int max_load = -1, bottleneck = -1;
     for (int i = 0; i < num_machines; i++) {
@@ -41,7 +34,7 @@ int find_bottleneck_machine(int num_machines, int *machine_loads) {
 }
 
 int main() {
-    FILE *input = fopen("../input/exemplo.jss", "r");
+    FILE *input = fopen("../input/med100.jss", "r");
     FILE *output = fopen("../output/bottleneck_output.txt", "w");
     FILE *metrics = fopen("../output/bottleneck_metrics.txt", "w");
     if (!input || !output || !metrics) {
@@ -82,6 +75,9 @@ int main() {
 
         int bottleneck = find_bottleneck_machine(num_machines, machine_load);
 
+        int chosen_job = -1;
+        int earliest_start = INF;
+
         for (int j = 0; j < num_jobs; j++) {
             int o = job_next_op[j];
             if (o >= jobs[j].num_ops) continue;
@@ -89,12 +85,20 @@ int main() {
             Operation *op = &jobs[j].ops[o];
             if (op->machine != bottleneck) continue;
 
-            int earliest_start = (job_ready[j] > machine_available[op->machine]) ? job_ready[j] : machine_available[op->machine];
+            int est = (job_ready[j] > machine_available[op->machine]) ? job_ready[j] : machine_available[op->machine];
+            if (est < earliest_start) {
+                earliest_start = est;
+                chosen_job = j;
+            }
+        }
+
+        if (chosen_job != -1) {
+            int o = job_next_op[chosen_job];
+            Operation *op = &jobs[chosen_job].ops[o];
             op->start_time = earliest_start;
             machine_available[op->machine] = earliest_start + op->duration;
-            job_ready[j] = earliest_start + op->duration;
-
-            job_next_op[j]++;
+            job_ready[chosen_job] = earliest_start + op->duration;
+            job_next_op[chosen_job]++;
             completed_ops++;
         }
     }
@@ -102,8 +106,9 @@ int main() {
     int makespan = 0;
     for (int j = 0; j < num_jobs; j++) {
         for (int o = 0; o < jobs[j].num_ops; o++) {
-            if (makespan < jobs[j].ops[o].start_time + jobs[j].ops[o].duration)
-                makespan = jobs[j].ops[o].start_time + jobs[j].ops[o].duration;
+            int finish = jobs[j].ops[o].start_time + jobs[j].ops[o].duration;
+            if (finish > makespan)
+                makespan = finish;
         }
     }
 
