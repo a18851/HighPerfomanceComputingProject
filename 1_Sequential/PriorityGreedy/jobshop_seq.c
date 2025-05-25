@@ -10,31 +10,36 @@
 #define MAX_MACHINES 100
 #define MAX_OPS 100
 
-typedef struct {
+typedef struct
+{
     int machine;
     int duration;
     int job_id;
     int op_index;
 } Task;
 
-typedef struct {
+typedef struct
+{
     Task tasks[MAX_OPS];
     int num_ops;
     int next_op_index;
     int start_times[MAX_OPS];
 } Job;
 
-int compare_tasks(const void *a, const void *b) {
+int compare_tasks(const void *a, const void *b)
+{
     Task *t1 = (Task *)a;
     Task *t2 = (Task *)b;
     return t1->duration - t2->duration;
 }
 
-int main() {
-    FILE *input = fopen("../input/exemplo.jss", "r");
+int main()
+{
+    FILE *input = fopen("../input/04.jss", "r");
     FILE *output = fopen("../output/prioridade_output.txt", "w");
     FILE *metrics = fopen("../output/prioridade_metrics.txt", "w");
-    if (!input || !output || !metrics) {
+    if (!input || !output || !metrics)
+    {
         perror("Erro ao abrir ficheiros");
         return 1;
     }
@@ -50,10 +55,12 @@ int main() {
     Task task_pool[MAX_JOBS * MAX_OPS];
     int task_count = 0;
 
-    for (int j = 0; j < num_jobs; j++) {
+    for (int j = 0; j < num_jobs; j++)
+    {
         jobs[j].num_ops = num_machines;
         jobs[j].next_op_index = 0;
-        for (int o = 0; o < num_machines; o++) {
+        for (int o = 0; o < num_machines; o++)
+        {
             int m, d;
             fscanf(input, "%d %d", &m, &d);
             Task t = {m, d, j, o};
@@ -67,9 +74,11 @@ int main() {
     int finished_ops[MAX_JOBS] = {0};
     int makespan = 0;
 
-    for (int i = 0; i < task_count; i++) {
+    for (int i = 0; i < task_count; i++)
+    {
         Task t = task_pool[i];
-        if (t.op_index != finished_ops[t.job_id]) continue;
+        if (t.op_index != finished_ops[t.job_id])
+            continue;
 
         int job_prev_time = 0;
         if (t.op_index > 0)
@@ -79,14 +88,17 @@ int main() {
 
         jobs[t.job_id].start_times[t.op_index] = start_time;
         machine_available[t.machine] = start_time + t.duration;
-        if (makespan < machine_available[t.machine]) makespan = machine_available[t.machine];
+        if (makespan < machine_available[t.machine])
+            makespan = machine_available[t.machine];
 
         finished_ops[t.job_id]++;
     }
 
     fprintf(output, "%d\n", makespan);
-    for (int j = 0; j < num_jobs; j++) {
-        for (int o = 0; o < jobs[j].num_ops; o++) {
+    for (int j = 0; j < num_jobs; j++)
+    {
+        for (int o = 0; o < jobs[j].num_ops; o++)
+        {
             fprintf(output, "%d ", jobs[j].start_times[o]);
         }
         fprintf(output, "\n");
