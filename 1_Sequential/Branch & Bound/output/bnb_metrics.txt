@@ -1,2 +1,2 @@
-Tempo de execucao: 19.8159 segundos
-Makespan: 35
+Tempo de execucao: 0.0001 segundos
+Makespan: 71

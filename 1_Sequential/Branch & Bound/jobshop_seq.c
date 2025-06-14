@@ -1,87 +1,65 @@
-
-// jobshop_seq_branch_bound_optimized.c
 #include <stdio.h>
 #include <stdlib.h>
-#include <limits.h>
-#include <string.h>
 #include <time.h>
 
-#define MAX_JOBS 105
-#define MAX_MACHINES 105
-#define MAX_OPS 105
-
-typedef struct
-{
-    int machine;
-    int duration;
-} Operation;
-
-typedef struct
-{
-    Operation ops[MAX_OPS];
-    int start_times[MAX_OPS];
-    int next_op; // index of the next operation to schedule
-    int num_ops;
-} Job;
+#define MAX_JOBS 10
+#define MAX_MACHINES 10
+#define MAX_OPERATIONS 1000
+#define MAX_NODES 10000
 
 int num_jobs, num_machines;
-Job jobs[MAX_JOBS];
-int best_makespan = INT_MAX;
-int best_schedule[MAX_JOBS][MAX_OPS];
+int operations[MAX_JOBS][MAX_MACHINES][2]; // [job][op][0:machine, 1:duration]
+int best_makespan = 1e9;
+int best_start[MAX_JOBS][MAX_MACHINES];
 
-int machine_available[MAX_MACHINES];
-int job_ready[MAX_JOBS];
-
-void branch(int current_makespan)
+typedef struct
 {
-    int all_done = 1;
+    int start_times[MAX_JOBS][MAX_MACHINES];
+    int job_time[MAX_JOBS];
+    int machine_time[MAX_MACHINES];
+    int depth;
+} Node;
 
-    for (int j = 0; j < num_jobs; j++)
-    {
-        if (jobs[j].next_op < jobs[j].num_ops)
-        {
+Node job_pool[MAX_NODES];
+int pool_size = 0;
 
-            printf("job %d, next op %d, num ops %d \n", j, jobs[j].next_op, jobs[j].num_ops);
-            all_done = 0;
-
-            Operation *op = &jobs[j].ops[jobs[j].next_op];
-            int start_time = job_ready[j] > machine_available[op->machine] ? job_ready[j] : machine_available[op->machine];
-            int finish_time = start_time + op->duration;
-
-            // Save state
-            int prev_machine_time = machine_available[op->machine];
-            int prev_job_time = job_ready[j];
-            jobs[j].start_times[jobs[j].next_op] = start_time;
-            machine_available[op->machine] = finish_time;
-            job_ready[j] = finish_time;
-            jobs[j].next_op++;
-
-            // Recurse
-            if (finish_time < best_makespan)
-                branch(finish_time > current_makespan ? finish_time : current_makespan);
-
-            // Backtrack
-            jobs[j].next_op--;
-            machine_available[op->machine] = prev_machine_time;
-            job_ready[j] = prev_job_time;
-        }
-    }
-
-    if (all_done)
-    {
-        if (current_makespan < best_makespan)
-        {
-            best_makespan = current_makespan;
-            for (int j = 0; j < num_jobs; j++)
-                for (int o = 0; o < jobs[j].num_ops; o++)
-                    best_schedule[j][o] = jobs[j].start_times[o];
-        }
-    }
+void read_input(FILE *input)
+{
+    fscanf(input, "%d %d", &num_jobs, &num_machines);
+    for (int i = 0; i < num_jobs; i++)
+        for (int j = 0; j < num_machines; j++)
+            fscanf(input, "%d %d", &operations[i][j][0], &operations[i][j][1]);
 }
 
-int main()
+int is_conflict(Node *node, int machine, int start, int duration)
 {
-    FILE *input = fopen("../input/04.jss", "r");
+    for (int j = 0; j < num_jobs; j++)
+    {
+        for (int o = 0; o < num_machines; o++)
+        {
+            if (node->start_times[j][o] == -1)
+                continue;
+            int scheduled_machine = operations[j][o][0];
+            if (scheduled_machine != machine)
+                continue;
+
+            int scheduled_start = node->start_times[j][o];
+            int scheduled_duration = operations[j][o][1];
+            int scheduled_end = scheduled_start + scheduled_duration;
+            int new_end = start + duration;
+
+            if (!(new_end <= scheduled_start || start >= scheduled_end))
+            {
+                return 1; // conflict
+            }
+        }
+    }
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    FILE *input = fopen("../input/jj06.jss", "r");
     FILE *output = fopen("../output/bnb_output.txt", "w");
     FILE *metrics = fopen("../output/bnb_metrics.txt", "w");
     if (!input || !output || !metrics)
@@ -90,36 +68,73 @@ int main()
         return 1;
     }
 
-    clock_t start = clock();
+    clock_t start_time = clock();
+    read_input(input);
 
-    fscanf(input, "%d %d", &num_machines, &num_jobs);
+    Node root = {.depth = 0};
+    for (int i = 0; i < MAX_MACHINES; i++)
+        root.machine_time[i] = 0;
+    for (int i = 0; i < MAX_JOBS; i++)
+        root.job_time[i] = 0;
+    for (int j = 0; j < MAX_JOBS; j++)
+        for (int m = 0; m < MAX_MACHINES; m++)
+            root.start_times[j][m] = -1;
 
-    for (int j = 0; j < num_jobs; j++)
+    job_pool[pool_size++] = root;
+
+    while (pool_size > 0)
     {
-        jobs[j].num_ops = num_machines;
-        jobs[j].next_op = 0;
-        for (int o = 0; o < num_machines; o++)
+        Node node = job_pool[--pool_size];
+
+        if (node.depth == num_jobs * num_machines)
         {
-            fscanf(input, "%d %d", &jobs[j].ops[o].machine, &jobs[j].ops[o].duration);
+            int finish_time = 0;
+            for (int i = 0; i < num_jobs; i++)
+                if (node.job_time[i] > finish_time)
+                    finish_time = node.job_time[i];
+            if (finish_time < best_makespan)
+            {
+                best_makespan = finish_time;
+                for (int j = 0; j < num_jobs; j++)
+                    for (int m = 0; m < num_machines; m++)
+                        best_start[j][m] = node.start_times[j][m];
+            }
+        }
+        else
+        {
+            int job = node.depth / num_machines;
+            int op = node.depth % num_machines;
+            int machine = operations[job][op][0];
+            int duration = operations[job][op][1];
+
+            int earliest = node.job_time[job];
+            int start = earliest;
+            while (is_conflict(&node, machine, start, duration))
+            {
+                start++;
+            }
+
+            Node child = node;
+            child.start_times[job][op] = start;
+            child.job_time[job] = start + duration;
+            child.machine_time[machine] = start + duration;
+            child.depth++;
+
+            if (pool_size < MAX_NODES)
+                job_pool[pool_size++] = child;
         }
     }
 
-    memset(machine_available, 0, sizeof(machine_available));
-    memset(job_ready, 0, sizeof(job_ready));
-    branch(0);
+    clock_t end_time = clock();
+    double elapsed = (double)(end_time - start_time) / CLOCKS_PER_SEC;
 
     fprintf(output, "%d\n", best_makespan);
     for (int j = 0; j < num_jobs; j++)
     {
-        for (int o = 0; o < jobs[j].num_ops; o++)
-        {
-            fprintf(output, "%d ", best_schedule[j][o]);
-        }
+        for (int m = 0; m < num_machines; m++)
+            fprintf(output, "%d ", best_start[j][m]);
         fprintf(output, "\n");
     }
-
-    clock_t end = clock();
-    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
     fprintf(metrics, "Tempo de execucao: %.4f segundos\n", elapsed);
     fprintf(metrics, "Makespan: %d\n", best_makespan);
 
