@@ -91,7 +91,7 @@ void branch_and_bound(struct State state)
 
 int main()
 {
-    FILE *input = fopen("../input/04.jss", "r");
+    FILE *input = fopen("../input/05.jss", "r");
     FILE *output = fopen("../output/bnb_output.txt", "w");
     FILE *metrics = fopen("../output/bnb_metrics.txt", "w");
     if (!input || !output || !metrics)
