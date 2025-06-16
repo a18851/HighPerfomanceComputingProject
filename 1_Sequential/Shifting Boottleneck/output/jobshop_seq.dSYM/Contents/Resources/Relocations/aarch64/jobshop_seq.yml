@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/ricardofernandes/Code/HPX/HighPerfomanceComputingProject/1_Sequential/Branch & Bound/output/jobshop_seq'
+relocations:     []
+...
