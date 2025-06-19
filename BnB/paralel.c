@@ -81,56 +81,41 @@ void read_input()
 }
 
 // Get initial upper bound using simple heuristic
+// Obtem o limite superior inicial;
 int get_initial_upper_bound()
 {
     int temp_job_completion[MAX_JOBS] = {0};
     int temp_machine_completion[MAX_MACHINES] = {0};
 
+    // For por cada job
     for (int j = 0; j < num_jobs; j++)
     {
+        // For por cada operação dentro do job
         for (int op = 0; op < num_machines; op++)
         {
+            // Obtem a máquina e a duração da operação
             int machine = job_machine[j][op];
             int duration = job_duration[j][op];
 
             int start_time = (temp_job_completion[j] > temp_machine_completion[machine]) ? temp_job_completion[j] : temp_machine_completion[machine];
 
+            // Tempo para completar = tempo de inicio + duração
             temp_job_completion[j] = start_time + duration;
+            // Atualiza o tempo de conclusão da máquina
             temp_machine_completion[machine] = start_time + duration;
         }
     }
 
     int makespan = 0;
+    // Por cada job verifica o tempo de conclusão, caso seja maior que o makespan, atualiza o makespan
     for (int j = 0; j < num_jobs; j++)
     {
         if (temp_job_completion[j] > makespan)
             makespan = temp_job_completion[j];
     }
 
+    // Retorna o makespan
     return makespan;
-}
-
-// Dominance-based pruning function (very conservative)
-int is_dominated_state(int job_completion[], int machine_completion[], int job_next_op[])
-{
-    // Only apply very conservative dominance pruning to avoid eliminating good paths
-    for (int j1 = 0; j1 < num_jobs; j1++)
-    {
-        for (int j2 = j1 + 1; j2 < num_jobs; j2++)
-        {
-            if (job_next_op[j1] == job_next_op[j2])
-            {
-                // Only prune if delay is very significant (more than 2/3 of best makespan)
-                int delay_threshold = (best_makespan * 2) / 3;
-                if (job_completion[j1] > job_completion[j2] + delay_threshold)
-                {
-                    return 1;
-                }
-            }
-        }
-    }
-
-    return 0;
 }
 
 // Improved lower bound calculation (already implemented in the provided code)
@@ -323,12 +308,6 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
     {
         return;
     }
-
-    // Make dominance pruning optional for now to ensure we find solutions
-    // if (is_dominated_state(job_completion, machine_completion, job_next_op))
-    // {
-    //     return;
-    // }
 
     // Improved lower bound pruning
     int lower_bound = calculate_improved_lower_bound(job_completion, machine_completion, job_next_op);
