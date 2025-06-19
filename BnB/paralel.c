@@ -3,9 +3,18 @@
 #include <time.h>
 #include <limits.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#define getClock() omp_get_wtime()
+#else
+#include <time.h>
+#define getClock() ((double)clock() / CLOCKS_PER_SEC)
+#endif
+
 #define MAX_JOBS 8
 #define MAX_MACHINES 8
-#define MAX_TOTAL_NODES 1000000000 // 1000M total nodes limit
+#define MAX_NODES_PER_THREAD 200000000 // 200M nodes per thread - much higher
+#define MAX_TOTAL_NODES 500000000      // 500M total nodes for sequential - much higher
 
 // Global problem data
 int num_jobs, num_machines;
@@ -22,6 +31,10 @@ int job_remaining_time[MAX_JOBS][MAX_MACHINES + 1];
 
 // Global time tracking
 double global_start_time = 0;
+
+#ifdef _OPENMP
+omp_lock_t best_lock;
+#endif
 
 void read_input()
 {
@@ -68,40 +81,32 @@ void read_input()
 }
 
 // Get initial upper bound using simple heuristic
-// Obtem o limite superior inicial;
 int get_initial_upper_bound()
 {
     int temp_job_completion[MAX_JOBS] = {0};
     int temp_machine_completion[MAX_MACHINES] = {0};
 
-    // For por cada job
     for (int j = 0; j < num_jobs; j++)
     {
-        // For por cada operação dentro do job
         for (int op = 0; op < num_machines; op++)
         {
-            // Obtem a máquina e a duração da operação
             int machine = job_machine[j][op];
             int duration = job_duration[j][op];
 
             int start_time = (temp_job_completion[j] > temp_machine_completion[machine]) ? temp_job_completion[j] : temp_machine_completion[machine];
 
-            // Tempo para completar = tempo de inicio + duração
             temp_job_completion[j] = start_time + duration;
-            // Atualiza o tempo de conclusão da máquina
             temp_machine_completion[machine] = start_time + duration;
         }
     }
 
     int makespan = 0;
-    // Por cada job verifica o tempo de conclusão, caso seja maior que o makespan, atualiza o makespan
     for (int j = 0; j < num_jobs; j++)
     {
         if (temp_job_completion[j] > makespan)
             makespan = temp_job_completion[j];
     }
 
-    // Retorna o makespan
     return makespan;
 }
 
@@ -128,7 +133,7 @@ int is_dominated_state(int job_completion[], int machine_completion[], int job_n
     return 0;
 }
 
-// Improved lower bound calculation (conservative)
+// Improved lower bound calculation (already implemented in the provided code)
 int calculate_improved_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
 {
     int max_bound = 0;
@@ -222,8 +227,13 @@ int all_jobs_complete(int job_next_op[])
     return 1;
 }
 
+// Update best solution (thread-safe)
 void update_best_solution(int schedule[MAX_JOBS][MAX_MACHINES], int makespan)
 {
+#ifdef _OPENMP
+    omp_set_lock(&best_lock);
+#endif
+
     if (makespan < best_makespan)
     {
         best_makespan = makespan;
@@ -234,12 +244,22 @@ void update_best_solution(int schedule[MAX_JOBS][MAX_MACHINES], int makespan)
                 best_schedule[j][op] = schedule[j][op];
             }
         }
-        printf("Nova melhor solucao: makespan = %d (nos explorados: %lld)\n",
+
+#ifdef _OPENMP
+        printf("Nova melhor solucao: makespan = %d (thread %d, nos: %lld)\n",
+               best_makespan, omp_get_thread_num(), nodes_explored);
+#else
+        printf("Nova melhor solucao: makespan = %d (nos: %lld)\n",
                best_makespan, nodes_explored);
+#endif
     }
+
+#ifdef _OPENMP
+    omp_unset_lock(&best_lock);
+#endif
 }
 
-// Enhanced branching with improved operation ordering and limits
+// Main Branch and Bound function with aggressive improvements
 void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
                       int job_completion[],
                       int machine_completion[],
@@ -247,21 +267,41 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
                       int depth)
 {
     // Node limit control
+#ifdef _OPENMP
+    static thread_local long long thread_nodes = 0;
+    thread_nodes++;
+    if (thread_nodes > MAX_NODES_PER_THREAD)
+    {
+        return;
+    }
+#else
     if (nodes_explored > MAX_TOTAL_NODES)
     {
         return;
     }
+#endif
 
-    // Incrementa o contador de nós explorados
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
     nodes_explored++;
 
-    // Printa o progresso a cada 5 milhões de nós explorados
-    if (nodes_explored % 5000000 == 0)
+    // Progress indicator - show more frequently to track progress better
+#ifdef _OPENMP
+    if (omp_get_thread_num() == 0 && nodes_explored % 5000000 == 0)
     {
-        double elapsed = ((double)clock() / CLOCKS_PER_SEC);
+        double elapsed = getClock() - global_start_time;
         printf("Nos explorados: %lld, melhor makespan: %d, tempo: %.1fs\n",
                nodes_explored, best_makespan, elapsed);
     }
+#else
+    if (nodes_explored % 5000000 == 0)
+    {
+        double elapsed = getClock() - global_start_time;
+        printf("Nos explorados: %lld, melhor makespan: %d, tempo: %.1fs\n",
+               nodes_explored, best_makespan, elapsed);
+    }
+#endif
 
     if (all_jobs_complete(job_next_op))
     {
@@ -271,19 +311,20 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
             if (job_completion[j] > makespan)
                 makespan = job_completion[j];
         }
+
         printf("Solucao completa encontrada: makespan = %d (nos: %lld)\n", makespan, nodes_explored);
         update_best_solution(schedule, makespan);
         return;
     }
 
-    // Allow full depth exploration
-    int max_reasonable_depth = num_jobs * num_machines;
+    // Less aggressive depth control - allow much deeper exploration
+    int max_reasonable_depth = num_jobs * num_machines; // Full depth allowed
     if (depth > max_reasonable_depth)
     {
         return;
     }
 
-    // Conservative dominance-based pruning (optional - can be disabled)
+    // Make dominance pruning optional for now to ensure we find solutions
     // if (is_dominated_state(job_completion, machine_completion, job_next_op))
     // {
     //     return;
@@ -361,7 +402,7 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
         }
     }
 
-    // Limit branching factor based on depth to control explosion
+    // Much less restrictive branching - allow full exploration at most depths
     int max_branches;
     if (depth < 15)
         max_branches = num_available; // Full branching for most depths
@@ -370,17 +411,20 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
     else
         max_branches = (num_available > 2) ? 2 : num_available; // Only limit at extremely deep levels
 
-    // Branch on jobs in order
-    for (int i = 0; i < max_branches; i++)
+// Parallelize at moderate depths to balance efficiency with exploration
+#ifdef _OPENMP
+#pragma omp parallel for if (depth <= 3 && max_branches > 1) schedule(dynamic)
+#endif
+    for (int idx = 0; idx < max_branches; idx++)
     {
-        int j = available_jobs[i].job;
-        int op = available_jobs[i].op;
-        int machine = available_jobs[i].machine;
-        int duration = available_jobs[i].duration;
-        int start_time = available_jobs[i].earliest_start;
+        int j = available_jobs[idx].job;
+        int op = available_jobs[idx].op;
+        int machine = available_jobs[idx].machine;
+        int duration = available_jobs[idx].duration;
+        int start_time = available_jobs[idx].earliest_start;
         int end_time = start_time + duration;
 
-        // Create new state
+        // Create new state (local copies for thread safety)
         int new_schedule[MAX_JOBS][MAX_MACHINES];
         int new_job_completion[MAX_JOBS];
         int new_machine_completion[MAX_MACHINES];
@@ -415,15 +459,22 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
 
 int main()
 {
-    printf("=== OPTIMIZED SEQUENTIAL BRANCH AND BOUND ===\n");
-    printf("Limite total de nos: %dM\n", MAX_TOTAL_NODES / 1000000);
-
     nodes_explored = 0;
-    global_start_time = (double)clock() / CLOCKS_PER_SEC;
+    global_start_time = getClock();
 
     read_input();
 
-    // Obtem a melhor solução inicial
+#ifdef _OPENMP
+    omp_init_lock(&best_lock);
+    printf("=== BALANCED PARALLEL BRANCH AND BOUND ===\n");
+    printf("Threads disponiveis: %d\n", omp_get_max_threads());
+    printf("Limite de nos por thread: %dM\n", MAX_NODES_PER_THREAD / 1000000);
+#else
+    printf("=== BALANCED BRANCH AND BOUND PARA JOB SHOP ===\n");
+    printf("Limite total de nos: %dM\n", MAX_TOTAL_NODES / 1000000);
+#endif
+
+    // Get better initial upper bound
     best_makespan = get_initial_upper_bound();
     printf("Upper bound inicial (heuristica): %d\n", best_makespan);
 
@@ -446,13 +497,11 @@ int main()
     }
 
     // Initialize arrays
-    // Inicializa os arrays de escalonamento, conclusão dos jobs e máquinas, e próximo operação de cada job
     int schedule[MAX_JOBS][MAX_MACHINES];
     int job_completion[MAX_JOBS];
     int machine_completion[MAX_MACHINES];
     int job_next_op[MAX_JOBS];
 
-    // Preenche os arrays com valores iniciais
     for (int j = 0; j < num_jobs; j++)
     {
         job_completion[j] = 0;
@@ -472,11 +521,19 @@ int main()
     printf("Heuristica salva como solucao inicial.\n");
 
     clock_t start_time = clock();
-    // Inicia a busca Branch and Bound
-    branch_and_bound(schedule, job_completion, machine_completion, job_next_op, 0);
-    clock_t end_time = clock();
+    double wall_start = getClock();
 
+    // Start the search
+    branch_and_bound(schedule, job_completion, machine_completion, job_next_op, 0);
+
+    clock_t end_time = clock();
+    double wall_end = getClock();
     double elapsed = (double)(end_time - start_time) / CLOCKS_PER_SEC;
+    double wall_elapsed = wall_end - wall_start;
+
+#ifdef _OPENMP
+    omp_destroy_lock(&best_lock);
+#endif
 
     // Write results
     FILE *output = fopen("../output/bnb_output.txt", "w");
@@ -497,16 +554,25 @@ int main()
     FILE *metrics = fopen("../output/bnb_metrics.txt", "w");
     if (metrics)
     {
-        fprintf(metrics, "Tempo de execucao: %.4f segundos\n", elapsed);
+        fprintf(metrics, "Tempo de execucao (CPU): %.4f segundos\n", elapsed);
+        fprintf(metrics, "Tempo de execucao (Wall): %.4f segundos\n", wall_elapsed);
         fprintf(metrics, "Makespan: %d\n", best_makespan);
         fprintf(metrics, "Nos explorados: %lld\n", nodes_explored);
+#ifdef _OPENMP
+        fprintf(metrics, "Threads utilizadas: %d\n", omp_get_max_threads());
+        fprintf(metrics, "Speedup: %.2fx\n", elapsed > 0 ? elapsed / wall_elapsed : 1.0);
+#endif
         fclose(metrics);
     }
 
     printf("\n=== RESULTADOS ===\n");
     printf("Melhor makespan: %d\n", best_makespan);
-    printf("Tempo de execucao: %.4f segundos\n", elapsed);
+    printf("Tempo de execucao: %.4f segundos\n", wall_elapsed);
     printf("Nos explorados: %lld\n", nodes_explored);
+#ifdef _OPENMP
+    printf("Threads: %d, Speedup: %.2fx\n", omp_get_max_threads(),
+           elapsed > 0 ? elapsed / wall_elapsed : 1.0);
+#endif
 
     printf("\nEscalonamento otimo:\n");
     for (int j = 0; j < num_jobs; j++)
