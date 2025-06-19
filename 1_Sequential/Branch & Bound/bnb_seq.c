@@ -5,6 +5,7 @@
 
 #define MAX_JOBS 8
 #define MAX_MACHINES 8
+#define MAX_TOTAL_NODES 1000000000 // 500M total nodes limit
 
 // Global problem data
 int num_jobs, num_machines;
@@ -18,6 +19,9 @@ long long nodes_explored = 0;
 
 // Precomputed data for faster bounds
 int job_remaining_time[MAX_JOBS][MAX_MACHINES + 1];
+
+// Global time tracking
+double global_start_time = 0;
 
 void read_input()
 {
@@ -101,12 +105,35 @@ int get_initial_upper_bound()
     return makespan;
 }
 
+// Dominance-based pruning function (very conservative)
+int is_dominated_state(int job_completion[], int machine_completion[], int job_next_op[])
+{
+    // Only apply very conservative dominance pruning to avoid eliminating good paths
+    for (int j1 = 0; j1 < num_jobs; j1++)
+    {
+        for (int j2 = j1 + 1; j2 < num_jobs; j2++)
+        {
+            if (job_next_op[j1] == job_next_op[j2])
+            {
+                // Only prune if delay is very significant (more than 2/3 of best makespan)
+                int delay_threshold = (best_makespan * 2) / 3;
+                if (job_completion[j1] > job_completion[j2] + delay_threshold)
+                {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
 // Improved lower bound calculation (conservative)
 int calculate_improved_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
 {
     int max_bound = 0;
 
-    // 1. Job-based bound using precomputed remaining times
+    // Original bounds
     for (int j = 0; j < num_jobs; j++)
     {
         int job_bound = job_completion[j] + job_remaining_time[j][job_next_op[j]];
@@ -114,23 +141,72 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             max_bound = job_bound;
     }
 
-    // 2. Machine-based bound (same as original but cleaner)
+    // Enhanced machine-based bound with better estimation
     for (int m = 0; m < num_machines; m++)
     {
         int remaining_work = 0;
+        int earliest_available = machine_completion[m];
+
+        // Collect all remaining operations for this machine
+        typedef struct
+        {
+            int job;
+            int op;
+            int earliest_start;
+            int duration;
+        } OpInfo;
+        OpInfo ops[MAX_JOBS * MAX_MACHINES];
+        int num_ops = 0;
+
         for (int j = 0; j < num_jobs; j++)
         {
             for (int op = job_next_op[j]; op < num_machines; op++)
             {
                 if (job_machine[j][op] == m)
                 {
-                    remaining_work += job_duration[j][op];
+                    ops[num_ops].job = j;
+                    ops[num_ops].op = op;
+                    ops[num_ops].duration = job_duration[j][op];
+
+                    // Calculate earliest this operation can start
+                    int job_ready_time = job_completion[j];
+                    for (int prev_op = job_next_op[j]; prev_op < op; prev_op++)
+                    {
+                        job_ready_time += job_duration[j][prev_op];
+                    }
+                    ops[num_ops].earliest_start = job_ready_time;
+                    num_ops++;
                 }
             }
         }
-        int machine_bound = machine_completion[m] + remaining_work;
-        if (machine_bound > max_bound)
-            max_bound = machine_bound;
+
+        // Sort by earliest start time for tighter bound
+        for (int i = 0; i < num_ops - 1; i++)
+        {
+            for (int k = i + 1; k < num_ops; k++)
+            {
+                if (ops[k].earliest_start < ops[i].earliest_start)
+                {
+                    OpInfo temp = ops[i];
+                    ops[i] = ops[k];
+                    ops[k] = temp;
+                }
+            }
+        }
+
+        // Calculate machine bound considering operation ordering
+        int current_time = earliest_available;
+        for (int i = 0; i < num_ops; i++)
+        {
+            if (ops[i].earliest_start > current_time)
+            {
+                current_time = ops[i].earliest_start;
+            }
+            current_time += ops[i].duration;
+        }
+
+        if (current_time > max_bound)
+            max_bound = current_time;
     }
 
     return max_bound;
@@ -163,20 +239,28 @@ void update_best_solution(int schedule[MAX_JOBS][MAX_MACHINES], int makespan)
     }
 }
 
-// Conservative branching with light operation ordering
+// Enhanced branching with improved operation ordering and limits
 void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
                       int job_completion[],
                       int machine_completion[],
                       int job_next_op[],
                       int depth)
 {
+    // Node limit control
+    if (nodes_explored > MAX_TOTAL_NODES)
+    {
+        return;
+    }
+
     // Incrementa o contador de nós explorados
     nodes_explored++;
 
     // Printa o progresso a cada 5 milhões de nós explorados
     if (nodes_explored % 5000000 == 0)
     {
-        printf("Nos explorados: %lld, melhor makespan: %d\n", nodes_explored, best_makespan);
+        double elapsed = ((double)clock() / CLOCKS_PER_SEC);
+        printf("Nos explorados: %lld, melhor makespan: %d, tempo: %.1fs\n",
+               nodes_explored, best_makespan, elapsed);
     }
 
     if (all_jobs_complete(job_next_op))
@@ -187,9 +271,23 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
             if (job_completion[j] > makespan)
                 makespan = job_completion[j];
         }
+        printf("Solucao completa encontrada: makespan = %d (nos: %lld)\n", makespan, nodes_explored);
         update_best_solution(schedule, makespan);
         return;
     }
+
+    // Allow full depth exploration
+    int max_reasonable_depth = num_jobs * num_machines;
+    if (depth > max_reasonable_depth)
+    {
+        return;
+    }
+
+    // Conservative dominance-based pruning (optional - can be disabled)
+    // if (is_dominated_state(job_completion, machine_completion, job_next_op))
+    // {
+    //     return;
+    // }
 
     // Improved lower bound pruning
     int lower_bound = calculate_improved_lower_bound(job_completion, machine_completion, job_next_op);
@@ -198,19 +296,16 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
         return;
     }
 
-    // Depth limit
-    if (depth > num_jobs * num_machines)
-    {
-        return;
-    }
-
-    // Collect available operations and apply light ordering
+    // Enhanced job selection with priority scoring
     typedef struct
     {
         int job;
+        int priority_score;
         int remaining_time;
         int duration;
         int earliest_start;
+        int machine;
+        int op;
     } JobInfo;
 
     JobInfo available_jobs[MAX_JOBS];
@@ -229,16 +324,35 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
             available_jobs[num_available].remaining_time = job_remaining_time[j][op];
             available_jobs[num_available].duration = duration;
             available_jobs[num_available].earliest_start = earliest_start;
+            available_jobs[num_available].machine = machine;
+            available_jobs[num_available].op = op;
+
+            // Multi-criteria priority scoring
+            int urgency = job_remaining_time[j][op]; // More remaining work = higher priority
+            int bottleneck = 0;
+
+            // Check if this operation uses a busy machine (bottleneck detection)
+            for (int other_j = 0; other_j < num_jobs; other_j++)
+            {
+                for (int other_op = job_next_op[other_j]; other_op < num_machines; other_op++)
+                {
+                    if (job_machine[other_j][other_op] == machine)
+                        bottleneck++;
+                }
+            }
+
+            // Combine criteria: urgency (remaining work) + bottleneck factor + duration preference
+            available_jobs[num_available].priority_score = urgency * 100 + bottleneck * 20 + duration * 5;
             num_available++;
         }
     }
 
-    // Light ordering: prefer jobs with more remaining work (critical path heuristic)
+    // Sort by priority score (higher = better)
     for (int i = 0; i < num_available - 1; i++)
     {
         for (int k = i + 1; k < num_available; k++)
         {
-            if (available_jobs[k].remaining_time > available_jobs[i].remaining_time)
+            if (available_jobs[k].priority_score > available_jobs[i].priority_score)
             {
                 JobInfo temp = available_jobs[i];
                 available_jobs[i] = available_jobs[k];
@@ -247,13 +361,22 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
         }
     }
 
+    // Limit branching factor based on depth to control explosion
+    int max_branches;
+    if (depth < 15)
+        max_branches = num_available; // Full branching for most depths
+    else if (depth < 20)
+        max_branches = (num_available > 3) ? 3 : num_available; // Slight limiting at very deep levels
+    else
+        max_branches = (num_available > 2) ? 2 : num_available; // Only limit at extremely deep levels
+
     // Branch on jobs in order
-    for (int i = 0; i < num_available; i++)
+    for (int i = 0; i < max_branches; i++)
     {
         int j = available_jobs[i].job;
-        int op = job_next_op[j];
-        int machine = job_machine[j][op];
-        int duration = job_duration[j][op];
+        int op = available_jobs[i].op;
+        int machine = available_jobs[i].machine;
+        int duration = available_jobs[i].duration;
         int start_time = available_jobs[i].earliest_start;
         int end_time = start_time + duration;
 
@@ -292,15 +415,35 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
 
 int main()
 {
-    printf("=== IMPROVED BRANCH AND BOUND PARA JOB SHOP SCHEDULING ===\n");
+    printf("=== OPTIMIZED SEQUENTIAL BRANCH AND BOUND ===\n");
+    printf("Limite total de nos: %dM\n", MAX_TOTAL_NODES / 1000000);
 
     nodes_explored = 0;
+    global_start_time = (double)clock() / CLOCKS_PER_SEC;
 
     read_input();
 
     // Obtem a melhor solução inicial
     best_makespan = get_initial_upper_bound();
     printf("Upper bound inicial (heuristica): %d\n", best_makespan);
+
+    // Save the heuristic solution as initial best
+    int temp_job_completion[MAX_JOBS] = {0};
+    int temp_machine_completion[MAX_MACHINES] = {0};
+
+    for (int j = 0; j < num_jobs; j++)
+    {
+        for (int op = 0; op < num_machines; op++)
+        {
+            int machine = job_machine[j][op];
+            int duration = job_duration[j][op];
+            int start_time = (temp_job_completion[j] > temp_machine_completion[machine]) ? temp_job_completion[j] : temp_machine_completion[machine];
+
+            best_schedule[j][op] = start_time; // Save the heuristic schedule
+            temp_job_completion[j] = start_time + duration;
+            temp_machine_completion[machine] = start_time + duration;
+        }
+    }
 
     // Initialize arrays
     // Inicializa os arrays de escalonamento, conclusão dos jobs e máquinas, e próximo operação de cada job
@@ -317,7 +460,7 @@ int main()
         for (int op = 0; op < num_machines; op++)
         {
             schedule[j][op] = -1;
-            best_schedule[j][op] = -1;
+            // Don't initialize best_schedule to -1, let the heuristic set it
         }
     }
     for (int m = 0; m < num_machines; m++)
@@ -325,7 +468,8 @@ int main()
         machine_completion[m] = 0;
     }
 
-    printf("Iniciando Improved Branch and Bound...\n");
+    printf("Iniciando Optimized Branch and Bound...\n");
+    printf("Heuristica salva como solucao inicial.\n");
 
     clock_t start_time = clock();
     // Inicia a busca Branch and Bound
@@ -370,6 +514,7 @@ int main()
         printf("Job %d: ", j);
         for (int op = 0; op < num_machines; op++)
         {
+            // Show all operations, even if start time might be 0
             printf("Op%d(M%d,t=%d->%d) ", op, job_machine[j][op],
                    best_schedule[j][op], best_schedule[j][op] + job_duration[j][op]);
         }

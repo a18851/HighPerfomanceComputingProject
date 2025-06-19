@@ -1,8 +1,6 @@
-Tempo de execucao (CPU): 10.0866 segundos
-Tempo de execucao (Wall): 3.4661 segundos
-Makespan: 2147483647
-Nos explorados: 20000052
-Nos podados: 0
-Taxa de poda: 0.00%
-Profundidade maxima: 30
+Tempo de execucao (CPU): 505.7508 segundos
+Tempo de execucao (Wall): 104.9565 segundos
+Makespan: 46
+Nos explorados: 1000000001
 Threads utilizadas: 8
+Speedup: 4.82x
