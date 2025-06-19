@@ -1,2 +1,5 @@
-Tempo de execucao: 0.6987 segundos
-Makespan: 35
+Tempo de execucao: 0.0002 segundos
+Makespan: 115
+Nos explorados: 81
+Nos podados: 65
+Taxa de poda: 44.52%
