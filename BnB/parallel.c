@@ -13,7 +13,7 @@
 
 #define MAX_JOBS 8
 #define MAX_MACHINES 8
-#define MAX_TOTAL_NODES 1000000000 // Fixed total nodes limit (1000M)
+#define MAX_TOTAL_NODES 10000000000 // Fixed total nodes limit (1000M)
 
 // Global problem data
 int num_jobs, num_machines;
@@ -397,7 +397,7 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
 
 // Parallelize at moderate depths to balance efficiency with exploration
 #ifdef _OPENMP
-#pragma omp parallel for if (depth <= 3 && max_branches > 1) schedule(dynamic)
+#pragma omp parallel for if (depth <= 6 && max_branches > 1) schedule(dynamic)
 #endif
     for (int idx = 0; idx < max_branches; idx++)
     {

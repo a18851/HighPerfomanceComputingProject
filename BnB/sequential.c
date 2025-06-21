@@ -5,7 +5,7 @@
 
 #define MAX_JOBS 8
 #define MAX_MACHINES 8
-#define MAX_TOTAL_NODES 1000000000 // 1000M total nodes limit
+#define MAX_TOTAL_NODES 10000000000 // 1000M total nodes limit
 
 // Global problem data
 int num_jobs, num_machines;
@@ -427,7 +427,7 @@ int main(int argc, char **argv)
     const char *metrics_filename = argv[3];
 
     printf("=== OPTIMIZED SEQUENTIAL BRANCH AND BOUND ===\n");
-    printf("Limite total de nos: %dM\n", MAX_TOTAL_NODES / 1000000);
+    printf("Limite total de nos: %lldM\n", (long long)(MAX_TOTAL_NODES / 1000000));
     printf("Arquivo de entrada: %s\n", input_filename);
     printf("Arquivo de saida: %s\n", output_filename);
     printf("Arquivo de metricas: %s\n\n", metrics_filename);
