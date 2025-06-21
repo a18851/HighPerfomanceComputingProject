@@ -1,0 +1,4 @@
+Tempo de execucao: 0.4064 segundos
+Makespan: 1231
+Algoritmo: Shifting Bottleneck Sequencial
+Arquivo de entrada: ../0inputs/med100.jss

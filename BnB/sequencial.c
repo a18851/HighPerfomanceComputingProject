@@ -105,6 +105,29 @@ int get_initial_upper_bound()
     return makespan;
 }
 
+// Dominance-based pruning function (very conservative)
+int is_dominated_state(int job_completion[], int machine_completion[], int job_next_op[])
+{
+    // Only apply very conservative dominance pruning to avoid eliminating good paths
+    for (int j1 = 0; j1 < num_jobs; j1++)
+    {
+        for (int j2 = j1 + 1; j2 < num_jobs; j2++)
+        {
+            if (job_next_op[j1] == job_next_op[j2])
+            {
+                // Only prune if delay is very significant (more than 2/3 of best makespan)
+                int delay_threshold = (best_makespan * 2) / 3;
+                if (job_completion[j1] > job_completion[j2] + delay_threshold)
+                {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
 // Improved lower bound calculation (conservative)
 int calculate_improved_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
 {
@@ -211,12 +234,17 @@ void update_best_solution(int schedule[MAX_JOBS][MAX_MACHINES], int makespan)
                 best_schedule[j][op] = schedule[j][op];
             }
         }
-        printf("Nova melhor solucao: makespan = %d (nos explorados: %lld)\n", best_makespan, nodes_explored);
+        printf("Nova melhor solucao: makespan = %d (nos explorados: %lld)\n",
+               best_makespan, nodes_explored);
     }
 }
 
 // Enhanced branching with improved operation ordering and limits
-void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES], int job_completion[], int machine_completion[], int job_next_op[], int depth)
+void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
+                      int job_completion[],
+                      int machine_completion[],
+                      int job_next_op[],
+                      int depth)
 {
     // Node limit control
     if (nodes_explored > MAX_TOTAL_NODES)
@@ -231,7 +259,8 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES], int job_completion[]
     if (nodes_explored % 5000000 == 0)
     {
         double elapsed = ((double)clock() / CLOCKS_PER_SEC);
-        printf("Nos explorados: %lld, melhor makespan: %d, tempo: %.1fs\n", nodes_explored, best_makespan, elapsed);
+        printf("Nos explorados: %lld, melhor makespan: %d, tempo: %.1fs\n",
+               nodes_explored, best_makespan, elapsed);
     }
 
     if (all_jobs_complete(job_next_op))
@@ -253,6 +282,12 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES], int job_completion[]
     {
         return;
     }
+
+    // Conservative dominance-based pruning (optional - can be disabled)
+    // if (is_dominated_state(job_completion, machine_completion, job_next_op))
+    // {
+    //     return;
+    // }
 
     // Improved lower bound pruning
     int lower_bound = calculate_improved_lower_bound(job_completion, machine_completion, job_next_op);
@@ -480,7 +515,8 @@ int main()
         for (int op = 0; op < num_machines; op++)
         {
             // Show all operations, even if start time might be 0
-            printf("Op%d(M%d,t=%d->%d) ", op, job_machine[j][op], best_schedule[j][op], best_schedule[j][op] + job_duration[j][op]);
+            printf("Op%d(M%d,t=%d->%d) ", op, job_machine[j][op],
+                   best_schedule[j][op], best_schedule[j][op] + job_duration[j][op]);
         }
         printf("\n");
     }

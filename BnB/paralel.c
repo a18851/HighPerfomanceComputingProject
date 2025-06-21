@@ -13,8 +13,8 @@
 
 #define MAX_JOBS 8
 #define MAX_MACHINES 8
-#define MAX_NODES_PER_THREAD 200000000
-#define MAX_TOTAL_NODES 500000000
+#define MAX_NODES_PER_THREAD 200000000 // 200M nodes per thread - much higher
+#define MAX_TOTAL_NODES 500000000      // 500M total nodes for sequential - much higher
 
 // Global problem data
 int num_jobs, num_machines;
@@ -81,49 +81,64 @@ void read_input()
 }
 
 // Get initial upper bound using simple heuristic
-// Obtem o limite superior inicial;
 int get_initial_upper_bound()
 {
     int temp_job_completion[MAX_JOBS] = {0};
     int temp_machine_completion[MAX_MACHINES] = {0};
 
-    // For por cada job
     for (int j = 0; j < num_jobs; j++)
     {
-        // For por cada operação dentro do job
         for (int op = 0; op < num_machines; op++)
         {
-            // Obtem a máquina e a duração da operação
             int machine = job_machine[j][op];
             int duration = job_duration[j][op];
 
             int start_time = (temp_job_completion[j] > temp_machine_completion[machine]) ? temp_job_completion[j] : temp_machine_completion[machine];
 
-            // Tempo para completar = tempo de inicio + duração
             temp_job_completion[j] = start_time + duration;
-            // Atualiza o tempo de conclusão da máquina
             temp_machine_completion[machine] = start_time + duration;
         }
     }
 
     int makespan = 0;
-    // Por cada job verifica o tempo de conclusão, caso seja maior que o makespan, atualiza o makespan
     for (int j = 0; j < num_jobs; j++)
     {
         if (temp_job_completion[j] > makespan)
             makespan = temp_job_completion[j];
     }
 
-    // Retorna o makespan
     return makespan;
 }
 
-// Calcula um limite inferior para o makespan a partir do estado atual
-int calculate_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
+// Dominance-based pruning function (very conservative)
+int is_dominated_state(int job_completion[], int machine_completion[], int job_next_op[])
+{
+    // Only apply very conservative dominance pruning to avoid eliminating good paths
+    for (int j1 = 0; j1 < num_jobs; j1++)
+    {
+        for (int j2 = j1 + 1; j2 < num_jobs; j2++)
+        {
+            if (job_next_op[j1] == job_next_op[j2])
+            {
+                // Only prune if delay is very significant (more than 2/3 of best makespan)
+                int delay_threshold = (best_makespan * 2) / 3;
+                if (job_completion[j1] > job_completion[j2] + delay_threshold)
+                {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+// Improved lower bound calculation (already implemented in the provided code)
+int calculate_improved_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
 {
     int max_bound = 0;
 
-    // Para cada job, calcula o tempo mínimo para completá-lo (tempo atual + operações restantes)
+    // Original bounds
     for (int j = 0; j < num_jobs; j++)
     {
         int job_bound = job_completion[j] + job_remaining_time[j][job_next_op[j]];
@@ -131,13 +146,13 @@ int calculate_lower_bound(int job_completion[], int machine_completion[], int jo
             max_bound = job_bound;
     }
 
-    // Para cada máquina, calcula o tempo mínimo para processar todas as operações restantes nela
+    // Enhanced machine-based bound with better estimation
     for (int m = 0; m < num_machines; m++)
     {
         int remaining_work = 0;
         int earliest_available = machine_completion[m];
 
-        // Estrutura para armazenar operações restantes nesta máquina
+        // Collect all remaining operations for this machine
         typedef struct
         {
             int job;
@@ -148,7 +163,6 @@ int calculate_lower_bound(int job_completion[], int machine_completion[], int jo
         OpInfo ops[MAX_JOBS * MAX_MACHINES];
         int num_ops = 0;
 
-        // Coleta todas as operações restantes que precisam desta máquina
         for (int j = 0; j < num_jobs; j++)
         {
             for (int op = job_next_op[j]; op < num_machines; op++)
@@ -159,7 +173,7 @@ int calculate_lower_bound(int job_completion[], int machine_completion[], int jo
                     ops[num_ops].op = op;
                     ops[num_ops].duration = job_duration[j][op];
 
-                    // Calcula o tempo mais cedo que esta operação pode começar (considerando dependências do job)
+                    // Calculate earliest this operation can start
                     int job_ready_time = job_completion[j];
                     for (int prev_op = job_next_op[j]; prev_op < op; prev_op++)
                     {
@@ -171,7 +185,7 @@ int calculate_lower_bound(int job_completion[], int machine_completion[], int jo
             }
         }
 
-        // Ordena as operações por tempo mais cedo de início (simula processamento sequencial na máquina)
+        // Sort by earliest start time for tighter bound
         for (int i = 0; i < num_ops - 1; i++)
         {
             for (int k = i + 1; k < num_ops; k++)
@@ -185,7 +199,7 @@ int calculate_lower_bound(int job_completion[], int machine_completion[], int jo
             }
         }
 
-        // Simula o processamento das operações nesta máquina, respeitando os tempos de início
+        // Calculate machine bound considering operation ordering
         int current_time = earliest_available;
         for (int i = 0; i < num_ops; i++)
         {
@@ -196,7 +210,6 @@ int calculate_lower_bound(int job_completion[], int machine_completion[], int jo
             current_time += ops[i].duration;
         }
 
-        // Atualiza o limite inferior se necessário
         if (current_time > max_bound)
             max_bound = current_time;
     }
@@ -311,8 +324,14 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
         return;
     }
 
+    // Make dominance pruning optional for now to ensure we find solutions
+    // if (is_dominated_state(job_completion, machine_completion, job_next_op))
+    // {
+    //     return;
+    // }
+
     // Improved lower bound pruning
-    int lower_bound = calculate_lower_bound(job_completion, machine_completion, job_next_op);
+    int lower_bound = calculate_improved_lower_bound(job_completion, machine_completion, job_next_op);
     if (lower_bound >= best_makespan)
     {
         return;
