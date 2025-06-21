@@ -13,8 +13,8 @@
 
 #define MAX_JOBS 8
 #define MAX_MACHINES 8
-#define MAX_NODES_PER_THREAD 200000000 // 200M nodes per thread - much higher
-#define MAX_TOTAL_NODES 500000000      // 500M total nodes for sequential - much higher
+#define MAX_NODES_PER_THREAD 200000000
+#define MAX_TOTAL_NODES 500000000
 
 // Global problem data
 int num_jobs, num_machines;
@@ -118,12 +118,12 @@ int get_initial_upper_bound()
     return makespan;
 }
 
-// Improved lower bound calculation (already implemented in the provided code)
-int calculate_improved_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
+// Calcula um limite inferior para o makespan a partir do estado atual
+int calculate_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
 {
     int max_bound = 0;
 
-    // Original bounds
+    // Para cada job, calcula o tempo mínimo para completá-lo (tempo atual + operações restantes)
     for (int j = 0; j < num_jobs; j++)
     {
         int job_bound = job_completion[j] + job_remaining_time[j][job_next_op[j]];
@@ -131,13 +131,13 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             max_bound = job_bound;
     }
 
-    // Enhanced machine-based bound with better estimation
+    // Para cada máquina, calcula o tempo mínimo para processar todas as operações restantes nela
     for (int m = 0; m < num_machines; m++)
     {
         int remaining_work = 0;
         int earliest_available = machine_completion[m];
 
-        // Collect all remaining operations for this machine
+        // Estrutura para armazenar operações restantes nesta máquina
         typedef struct
         {
             int job;
@@ -148,6 +148,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
         OpInfo ops[MAX_JOBS * MAX_MACHINES];
         int num_ops = 0;
 
+        // Coleta todas as operações restantes que precisam desta máquina
         for (int j = 0; j < num_jobs; j++)
         {
             for (int op = job_next_op[j]; op < num_machines; op++)
@@ -158,7 +159,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
                     ops[num_ops].op = op;
                     ops[num_ops].duration = job_duration[j][op];
 
-                    // Calculate earliest this operation can start
+                    // Calcula o tempo mais cedo que esta operação pode começar (considerando dependências do job)
                     int job_ready_time = job_completion[j];
                     for (int prev_op = job_next_op[j]; prev_op < op; prev_op++)
                     {
@@ -170,7 +171,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             }
         }
 
-        // Sort by earliest start time for tighter bound
+        // Ordena as operações por tempo mais cedo de início (simula processamento sequencial na máquina)
         for (int i = 0; i < num_ops - 1; i++)
         {
             for (int k = i + 1; k < num_ops; k++)
@@ -184,7 +185,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             }
         }
 
-        // Calculate machine bound considering operation ordering
+        // Simula o processamento das operações nesta máquina, respeitando os tempos de início
         int current_time = earliest_available;
         for (int i = 0; i < num_ops; i++)
         {
@@ -195,6 +196,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             current_time += ops[i].duration;
         }
 
+        // Atualiza o limite inferior se necessário
         if (current_time > max_bound)
             max_bound = current_time;
     }
@@ -310,7 +312,7 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
     }
 
     // Improved lower bound pruning
-    int lower_bound = calculate_improved_lower_bound(job_completion, machine_completion, job_next_op);
+    int lower_bound = calculate_lower_bound(job_completion, machine_completion, job_next_op);
     if (lower_bound >= best_makespan)
     {
         return;

@@ -480,8 +480,7 @@ int main()
         for (int op = 0; op < num_machines; op++)
         {
             // Show all operations, even if start time might be 0
-            printf("Op%d(M%d,t=%d->%d) ", op, job_machine[j][op],
-                   best_schedule[j][op], best_schedule[j][op] + job_duration[j][op]);
+            printf("Op%d(M%d,t=%d->%d) ", op, job_machine[j][op], best_schedule[j][op], best_schedule[j][op] + job_duration[j][op]);
         }
         printf("\n");
     }
