@@ -1,0 +1,9 @@
+Tempo de execucao (CPU): 334.2073 segundos
+Tempo de execucao (Wall): 167.2048 segundos
+Makespan: 50
+Nos explorados: 1000000000
+Limite total de nos: 1000000000
+Arquivo de entrada: ../0inputs/05.jss
+Algoritmo: Branch and Bound Paralelo (Limite Fixo)
+Threads utilizadas: 2
+Speedup: 2.00x

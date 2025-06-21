@@ -1,0 +1,7 @@
+gcc sequential.c -o executables/sequential
+gcc-15 -fopenmp parallel.c -o executables/parallel
+
+./executables/sequential ../0inputs/05.jss output/01_seq_results.txt output/01_seq_metrics.txt
+./executables/parallel ../0inputs/05.jss output/02_parallel_results.txt output/02_parallel_metrics.txt
+OMP_NUM_THREADS=2 ./executables/parallel ../0inputs/05.jss output/03_parallel_results_02t.txt output/03_parallel_metrics_02t.txt
+OMP_NUM_THREADS=4 ./executables/parallel ../0inputs/05.jss output/04_parallel_results_04t.txt output/04_parallel_metrics_04t.txt

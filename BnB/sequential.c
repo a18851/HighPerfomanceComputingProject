@@ -23,12 +23,12 @@ int job_remaining_time[MAX_JOBS][MAX_MACHINES + 1];
 // Global time tracking
 double global_start_time = 0;
 
-void read_input()
+void read_input(const char *input_filename)
 {
-    FILE *input = fopen("../input/05.jss", "r");
+    FILE *input = fopen(input_filename, "r");
     if (!input)
     {
-        printf("ERRO: Arquivo input/05.jss nao encontrado\n");
+        printf("ERRO: Arquivo %s nao encontrado\n", input_filename);
         exit(1);
     }
 
@@ -68,16 +68,15 @@ void read_input()
 }
 
 // Get initial upper bound using simple heuristic
-// Obtem o limite superior inicial;
 int get_initial_upper_bound()
 {
     int temp_job_completion[MAX_JOBS] = {0};
     int temp_machine_completion[MAX_MACHINES] = {0};
 
-    // For por cada job
+    // For cada job
     for (int j = 0; j < num_jobs; j++)
     {
-        // For por cada operação dentro do job
+        // For cada operação dentro do job
         for (int op = 0; op < num_machines; op++)
         {
             // Obtem a máquina e a duração da operação
@@ -413,15 +412,30 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
     }
 }
 
-int main()
+int main(int argc, char **argv)
 {
+    // Check command line arguments
+    if (argc != 4)
+    {
+        printf("Uso: %s <input_file> <output_file> <metrics_file>\n", argv[0]);
+        printf("Exemplo: %s input/05.jss output/bnb_seq.txt output/bnb_seq_metrics.txt\n", argv[0]);
+        return 1;
+    }
+
+    const char *input_filename = argv[1];
+    const char *output_filename = argv[2];
+    const char *metrics_filename = argv[3];
+
     printf("=== OPTIMIZED SEQUENTIAL BRANCH AND BOUND ===\n");
     printf("Limite total de nos: %dM\n", MAX_TOTAL_NODES / 1000000);
+    printf("Arquivo de entrada: %s\n", input_filename);
+    printf("Arquivo de saida: %s\n", output_filename);
+    printf("Arquivo de metricas: %s\n\n", metrics_filename);
 
     nodes_explored = 0;
     global_start_time = (double)clock() / CLOCKS_PER_SEC;
 
-    read_input();
+    read_input(input_filename);
 
     // Obtem a melhor solução inicial
     best_makespan = get_initial_upper_bound();
@@ -479,7 +493,7 @@ int main()
     double elapsed = (double)(end_time - start_time) / CLOCKS_PER_SEC;
 
     // Write results
-    FILE *output = fopen("../output/bnb_output.txt", "w");
+    FILE *output = fopen(output_filename, "w");
     if (output)
     {
         fprintf(output, "%d\n", best_makespan);
@@ -493,14 +507,24 @@ int main()
         }
         fclose(output);
     }
+    else
+    {
+        printf("Erro ao criar arquivo de saida: %s\n", output_filename);
+    }
 
-    FILE *metrics = fopen("../output/bnb_metrics.txt", "w");
+    FILE *metrics = fopen(metrics_filename, "w");
     if (metrics)
     {
         fprintf(metrics, "Tempo de execucao: %.4f segundos\n", elapsed);
         fprintf(metrics, "Makespan: %d\n", best_makespan);
         fprintf(metrics, "Nos explorados: %lld\n", nodes_explored);
+        fprintf(metrics, "Algoritmo: Branch and Bound Sequencial\n");
+        fprintf(metrics, "Arquivo de entrada: %s\n", input_filename);
         fclose(metrics);
+    }
+    else
+    {
+        printf("Erro ao criar arquivo de metricas: %s\n", metrics_filename);
     }
 
     printf("\n=== RESULTADOS ===\n");
@@ -520,6 +544,9 @@ int main()
         }
         printf("\n");
     }
+
+    printf("\nResultados salvos em: %s\n", output_filename);
+    printf("Metricas salvas em: %s\n", metrics_filename);
 
     return 0;
 }

@@ -1,0 +1,5 @@
+Tempo de execucao: 285.1446 segundos
+Makespan: 57
+Nos explorados: 1000000001
+Algoritmo: Branch and Bound Sequencial
+Arquivo de entrada: ../0inputs/05.jss

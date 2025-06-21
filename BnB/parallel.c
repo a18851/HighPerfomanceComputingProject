@@ -13,8 +13,7 @@
 
 #define MAX_JOBS 8
 #define MAX_MACHINES 8
-#define MAX_NODES_PER_THREAD 200000000 // 200M nodes per thread - much higher
-#define MAX_TOTAL_NODES 500000000      // 500M total nodes for sequential - much higher
+#define MAX_TOTAL_NODES 1000000000 // Fixed total nodes limit (1000M)
 
 // Global problem data
 int num_jobs, num_machines;
@@ -36,12 +35,12 @@ double global_start_time = 0;
 omp_lock_t best_lock;
 #endif
 
-void read_input()
+void read_input(const char *input_filename)
 {
-    FILE *input = fopen("../input/05.jss", "r");
+    FILE *input = fopen(input_filename, "r");
     if (!input)
     {
-        printf("ERRO: Arquivo input/05.jss nao encontrado\n");
+        printf("ERRO: Arquivo %s nao encontrado\n", input_filename);
         exit(1);
     }
 
@@ -133,7 +132,7 @@ int is_dominated_state(int job_completion[], int machine_completion[], int job_n
     return 0;
 }
 
-// Improved lower bound calculation (already implemented in the provided code)
+// Improved lower bound calculation
 int calculate_improved_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
 {
     int max_bound = 0;
@@ -259,47 +258,38 @@ void update_best_solution(int schedule[MAX_JOBS][MAX_MACHINES], int makespan)
 #endif
 }
 
-// Main Branch and Bound function with aggressive improvements
+// Main Branch and Bound function with FIXED total node limit
 void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
                       int job_completion[],
                       int machine_completion[],
                       int job_next_op[],
                       int depth)
 {
-    // Node limit control
-#ifdef _OPENMP
-    static thread_local long long thread_nodes = 0;
-    thread_nodes++;
-    if (thread_nodes > MAX_NODES_PER_THREAD)
+    // FIXED total node limit - same regardless of thread count
+    if (nodes_explored >= MAX_TOTAL_NODES)
     {
         return;
     }
-#else
-    if (nodes_explored > MAX_TOTAL_NODES)
-    {
-        return;
-    }
-#endif
 
 #ifdef _OPENMP
 #pragma omp atomic
 #endif
     nodes_explored++;
 
-    // Progress indicator - show more frequently to track progress better
+    // Progress indicator - show progress
 #ifdef _OPENMP
     if (omp_get_thread_num() == 0 && nodes_explored % 5000000 == 0)
     {
         double elapsed = getClock() - global_start_time;
-        printf("Nos explorados: %lld, melhor makespan: %d, tempo: %.1fs\n",
-               nodes_explored, best_makespan, elapsed);
+        printf("Nos explorados: %lld/%lld, melhor makespan: %d, tempo: %.1fs\n",
+               nodes_explored, (long long)MAX_TOTAL_NODES, best_makespan, elapsed);
     }
 #else
     if (nodes_explored % 5000000 == 0)
     {
         double elapsed = getClock() - global_start_time;
-        printf("Nos explorados: %lld, melhor makespan: %d, tempo: %.1fs\n",
-               nodes_explored, best_makespan, elapsed);
+        printf("Nos explorados: %lld/%lld, melhor makespan: %d, tempo: %.1fs\n",
+               nodes_explored, (long long)MAX_TOTAL_NODES, best_makespan, elapsed);
     }
 #endif
 
@@ -323,12 +313,6 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
     {
         return;
     }
-
-    // Make dominance pruning optional for now to ensure we find solutions
-    // if (is_dominated_state(job_completion, machine_completion, job_next_op))
-    // {
-    //     return;
-    // }
 
     // Improved lower bound pruning
     int lower_bound = calculate_improved_lower_bound(job_completion, machine_completion, job_next_op);
@@ -417,6 +401,12 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
 #endif
     for (int idx = 0; idx < max_branches; idx++)
     {
+        // Check global node limit before processing each branch
+        if (nodes_explored >= MAX_TOTAL_NODES)
+        {
+            continue; // Skip this branch if we've hit the global limit
+        }
+
         int j = available_jobs[idx].job;
         int op = available_jobs[idx].op;
         int machine = available_jobs[idx].machine;
@@ -457,22 +447,37 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
     }
 }
 
-int main()
+int main(int argc, char **argv)
 {
+    // Check command line arguments
+    if (argc != 4)
+    {
+        printf("Uso: %s <input_file> <output_file> <metrics_file>\n", argv[0]);
+        printf("Exemplo: %s input/05.jss output/bnb_par.txt output/bnb_par_metrics.txt\n", argv[0]);
+        return 1;
+    }
+
+    const char *input_filename = argv[1];
+    const char *output_filename = argv[2];
+    const char *metrics_filename = argv[3];
+
     nodes_explored = 0;
     global_start_time = getClock();
 
-    read_input();
+    read_input(input_filename);
 
 #ifdef _OPENMP
     omp_init_lock(&best_lock);
-    printf("=== BALANCED PARALLEL BRANCH AND BOUND ===\n");
+    printf("=== BALANCED PARALLEL BRANCH AND BOUND (FIXED NODE LIMIT) ===\n");
     printf("Threads disponiveis: %d\n", omp_get_max_threads());
-    printf("Limite de nos por thread: %dM\n", MAX_NODES_PER_THREAD / 1000000);
+    printf("Limite TOTAL de nos: %dM (fixo, nao por thread)\n", MAX_TOTAL_NODES / 1000000);
 #else
     printf("=== BALANCED BRANCH AND BOUND PARA JOB SHOP ===\n");
     printf("Limite total de nos: %dM\n", MAX_TOTAL_NODES / 1000000);
 #endif
+    printf("Arquivo de entrada: %s\n", input_filename);
+    printf("Arquivo de saida: %s\n", output_filename);
+    printf("Arquivo de metricas: %s\n\n", metrics_filename);
 
     // Get better initial upper bound
     best_makespan = get_initial_upper_bound();
@@ -509,7 +514,6 @@ int main()
         for (int op = 0; op < num_machines; op++)
         {
             schedule[j][op] = -1;
-            // Don't initialize best_schedule to -1, let the heuristic set it
         }
     }
     for (int m = 0; m < num_machines; m++)
@@ -536,7 +540,7 @@ int main()
 #endif
 
     // Write results
-    FILE *output = fopen("../output/bnb_output.txt", "w");
+    FILE *output = fopen(output_filename, "w");
     if (output)
     {
         fprintf(output, "%d\n", best_makespan);
@@ -550,25 +554,40 @@ int main()
         }
         fclose(output);
     }
+    else
+    {
+        printf("Erro ao criar arquivo de saida: %s\n", output_filename);
+    }
 
-    FILE *metrics = fopen("../output/bnb_metrics.txt", "w");
+    FILE *metrics = fopen(metrics_filename, "w");
     if (metrics)
     {
         fprintf(metrics, "Tempo de execucao (CPU): %.4f segundos\n", elapsed);
         fprintf(metrics, "Tempo de execucao (Wall): %.4f segundos\n", wall_elapsed);
         fprintf(metrics, "Makespan: %d\n", best_makespan);
         fprintf(metrics, "Nos explorados: %lld\n", nodes_explored);
+        fprintf(metrics, "Limite total de nos: %d\n", MAX_TOTAL_NODES);
+        fprintf(metrics, "Arquivo de entrada: %s\n", input_filename);
 #ifdef _OPENMP
+        fprintf(metrics, "Algoritmo: Branch and Bound Paralelo (Limite Fixo)\n");
         fprintf(metrics, "Threads utilizadas: %d\n", omp_get_max_threads());
         fprintf(metrics, "Speedup: %.2fx\n", elapsed > 0 ? elapsed / wall_elapsed : 1.0);
+#else
+        fprintf(metrics, "Algoritmo: Branch and Bound Sequencial\n");
 #endif
         fclose(metrics);
+    }
+    else
+    {
+        printf("Erro ao criar arquivo de metricas: %s\n", metrics_filename);
     }
 
     printf("\n=== RESULTADOS ===\n");
     printf("Melhor makespan: %d\n", best_makespan);
     printf("Tempo de execucao: %.4f segundos\n", wall_elapsed);
-    printf("Nos explorados: %lld\n", nodes_explored);
+    printf("Nos explorados: %lld / %d (%.1f%%)\n",
+           nodes_explored, MAX_TOTAL_NODES,
+           (double)nodes_explored / MAX_TOTAL_NODES * 100.0);
 #ifdef _OPENMP
     printf("Threads: %d, Speedup: %.2fx\n", omp_get_max_threads(),
            elapsed > 0 ? elapsed / wall_elapsed : 1.0);
@@ -580,12 +599,14 @@ int main()
         printf("Job %d: ", j);
         for (int op = 0; op < num_machines; op++)
         {
-            // Show all operations, even if start time might be 0
             printf("Op%d(M%d,t=%d->%d) ", op, job_machine[j][op],
                    best_schedule[j][op], best_schedule[j][op] + job_duration[j][op]);
         }
         printf("\n");
     }
+
+    printf("\nResultados salvos em: %s\n", output_filename);
+    printf("Metricas salvas em: %s\n", metrics_filename);
 
     return 0;
 }
