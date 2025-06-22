@@ -5,36 +5,36 @@
 
 #define MAX_JOBS 8
 #define MAX_MACHINES 8
-#define MAX_TOTAL_NODES 10000000000 // 1000M total nodes limit
+#define MAX_TOTAL_NODES 10000000000
 
-// Global problem data
 int num_jobs, num_machines;
 int job_machine[MAX_JOBS][MAX_MACHINES];
 int job_duration[MAX_JOBS][MAX_MACHINES];
 
-// Best solution tracking
 int best_makespan;
 int best_schedule[MAX_JOBS][MAX_MACHINES];
 long long nodes_explored = 0;
 
-// Precomputed data for faster bounds
 int job_remaining_time[MAX_JOBS][MAX_MACHINES + 1];
 
-// Global time tracking
 double global_start_time = 0;
 
 void read_input(const char *input_filename)
 {
+    // Abre o arquivo de entrada para leitura
     FILE *input = fopen(input_filename, "r");
     if (!input)
     {
+        // Se não conseguir abrir o arquivo, exibe mensagem de erro e encerra o programa
         printf("ERRO: Arquivo %s nao encontrado\n", input_filename);
         exit(1);
     }
 
+    // Lê o número de jobs e de máquinas do arquivo
     fscanf(input, "%d %d", &num_jobs, &num_machines);
     printf("Problema: %d jobs, %d machines\n", num_jobs, num_machines);
 
+    // Lê, para cada job, a sequência de máquinas e suas durações
     for (int j = 0; j < num_jobs; j++)
     {
         for (int op = 0; op < num_machines; op++)
@@ -42,18 +42,20 @@ void read_input(const char *input_filename)
             fscanf(input, "%d %d", &job_machine[j][op], &job_duration[j][op]);
         }
     }
-    fclose(input);
+    fclose(input); // Fecha o arquivo após a leitura
 
-    // Precompute remaining times for each job from each operation
+    // Calcula o tempo restante de processamento para cada operação de cada job
     for (int j = 0; j < num_jobs; j++)
     {
-        job_remaining_time[j][num_machines] = 0;
+        job_remaining_time[j][num_machines] = 0; // Inicializa o tempo restante após a última operação como zero
         for (int op = num_machines - 1; op >= 0; op--)
         {
+            // Soma a duração da operação atual ao tempo restante das operações seguintes
             job_remaining_time[j][op] = job_remaining_time[j][op + 1] + job_duration[j][op];
         }
     }
 
+    // Exibe os dados lidos do problema para conferência
     printf("\nDados do problema:\n");
     for (int j = 0; j < num_jobs; j++)
     {
@@ -67,55 +69,53 @@ void read_input(const char *input_filename)
     printf("\n");
 }
 
-// Get initial upper bound using simple heuristic
 int get_initial_upper_bound()
 {
+    // Vetores temporários para armazenar o tempo de conclusão de cada job e máquina
     int temp_job_completion[MAX_JOBS] = {0};
     int temp_machine_completion[MAX_MACHINES] = {0};
 
-    // For cada job
+    // Para cada job
     for (int j = 0; j < num_jobs; j++)
     {
-        // For cada operação dentro do job
+        // Para cada operação do job
         for (int op = 0; op < num_machines; op++)
         {
-            // Obtem a máquina e a duração da operação
-            int machine = job_machine[j][op];
-            int duration = job_duration[j][op];
+            int machine = job_machine[j][op];   // Máquina da operação atual
+            int duration = job_duration[j][op]; // Duração da operação atual
 
+            // O início da operação é o maior valor entre o término do job e o término da máquina
             int start_time = (temp_job_completion[j] > temp_machine_completion[machine]) ? temp_job_completion[j] : temp_machine_completion[machine];
 
-            // Tempo para completar = tempo de inicio + duração
+            // Atualiza o tempo de conclusão do job e da máquina
             temp_job_completion[j] = start_time + duration;
-            // Atualiza o tempo de conclusão da máquina
             temp_machine_completion[machine] = start_time + duration;
         }
     }
 
+    // Calcula o makespan (tempo total para concluir todos os jobs)
     int makespan = 0;
-    // Por cada job verifica o tempo de conclusão, caso seja maior que o makespan, atualiza o makespan
     for (int j = 0; j < num_jobs; j++)
     {
         if (temp_job_completion[j] > makespan)
             makespan = temp_job_completion[j];
     }
 
-    // Retorna o makespan
-    return makespan;
+    return makespan; // Retorna o makespan como upper bound inicial
 }
 
-// Dominance-based pruning function (very conservative)
 int is_dominated_state(int job_completion[], int machine_completion[], int job_next_op[])
 {
-    // Only apply very conservative dominance pruning to avoid eliminating good paths
+    // Verifica se algum estado é dominado, ou seja, se algum job está muito atrasado em relação a outro com a mesma próxima operação
     for (int j1 = 0; j1 < num_jobs; j1++)
     {
         for (int j2 = j1 + 1; j2 < num_jobs; j2++)
         {
             if (job_next_op[j1] == job_next_op[j2])
             {
-                // Only prune if delay is very significant (more than 2/3 of best makespan)
+                // Define um limiar de atraso baseado no melhor makespan conhecido
                 int delay_threshold = (best_makespan * 2) / 3;
+                // Se o job j1 está muito mais atrasado que j2, o estado é dominado
                 if (job_completion[j1] > job_completion[j2] + delay_threshold)
                 {
                     return 1;
@@ -124,15 +124,14 @@ int is_dominated_state(int job_completion[], int machine_completion[], int job_n
         }
     }
 
-    return 0;
+    return 0; // Estado não dominado
 }
 
-// Improved lower bound calculation (conservative)
 int calculate_improved_lower_bound(int job_completion[], int machine_completion[], int job_next_op[])
 {
     int max_bound = 0;
 
-    // Original bounds
+    // Calcula o bound baseado no tempo restante de cada job
     for (int j = 0; j < num_jobs; j++)
     {
         int job_bound = job_completion[j] + job_remaining_time[j][job_next_op[j]];
@@ -140,13 +139,13 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             max_bound = job_bound;
     }
 
-    // Enhanced machine-based bound with better estimation
+    // Para cada máquina, calcula o bound considerando as operações restantes nela
     for (int m = 0; m < num_machines; m++)
     {
         int remaining_work = 0;
         int earliest_available = machine_completion[m];
 
-        // Collect all remaining operations for this machine
+        // Estrutura para armazenar informações das operações restantes na máquina m
         typedef struct
         {
             int job;
@@ -157,6 +156,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
         OpInfo ops[MAX_JOBS * MAX_MACHINES];
         int num_ops = 0;
 
+        // Coleta todas as operações restantes para a máquina m
         for (int j = 0; j < num_jobs; j++)
         {
             for (int op = job_next_op[j]; op < num_machines; op++)
@@ -167,7 +167,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
                     ops[num_ops].op = op;
                     ops[num_ops].duration = job_duration[j][op];
 
-                    // Calculate earliest this operation can start
+                    // Calcula o tempo mais cedo que a operação pode começar
                     int job_ready_time = job_completion[j];
                     for (int prev_op = job_next_op[j]; prev_op < op; prev_op++)
                     {
@@ -179,7 +179,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             }
         }
 
-        // Sort by earliest start time for tighter bound
+        // Ordena as operações pelo tempo mais cedo de início (selection sort)
         for (int i = 0; i < num_ops - 1; i++)
         {
             for (int k = i + 1; k < num_ops; k++)
@@ -193,7 +193,7 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             }
         }
 
-        // Calculate machine bound considering operation ordering
+        // Simula o processamento das operações na máquina m
         int current_time = earliest_available;
         for (int i = 0; i < num_ops; i++)
         {
@@ -204,28 +204,32 @@ int calculate_improved_lower_bound(int job_completion[], int machine_completion[
             current_time += ops[i].duration;
         }
 
+        // Atualiza o bound máximo se necessário
         if (current_time > max_bound)
             max_bound = current_time;
     }
 
-    return max_bound;
+    return max_bound; // Retorna o melhor lower bound encontrado
 }
 
 int all_jobs_complete(int job_next_op[])
 {
+    // Verifica se todos os jobs já completaram todas as operações
     for (int j = 0; j < num_jobs; j++)
     {
         if (job_next_op[j] < num_machines)
-            return 0;
+            return 0; // Ainda há operações a serem feitas
     }
-    return 1;
+    return 1; // Todos os jobs estão completos
 }
 
 void update_best_solution(int schedule[MAX_JOBS][MAX_MACHINES], int makespan)
 {
+    // Verifica se o novo makespan é melhor (menor) que o melhor encontrado até agora
     if (makespan < best_makespan)
     {
-        best_makespan = makespan;
+        best_makespan = makespan; // Atualiza o melhor makespan
+        // Copia o agendamento atual para o melhor agendamento encontrado
         for (int j = 0; j < num_jobs; j++)
         {
             for (int op = 0; op < num_machines; op++)
@@ -233,28 +237,27 @@ void update_best_solution(int schedule[MAX_JOBS][MAX_MACHINES], int makespan)
                 best_schedule[j][op] = schedule[j][op];
             }
         }
+        // Imprime mensagem informando a nova melhor solução encontrada
         printf("Nova melhor solucao: makespan = %d (nos explorados: %lld)\n",
                best_makespan, nodes_explored);
     }
 }
 
-// Enhanced branching with improved operation ordering and limits
 void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
                       int job_completion[],
                       int machine_completion[],
                       int job_next_op[],
                       int depth)
 {
-    // Node limit control
+    // Limita o número total de nós explorados para evitar execuções muito longas
     if (nodes_explored > MAX_TOTAL_NODES)
     {
         return;
     }
 
-    // Incrementa o contador de nós explorados
-    nodes_explored++;
+    nodes_explored++; // Conta mais um nó explorado
 
-    // Printa o progresso a cada 5 milhões de nós explorados
+    // A cada 5 milhões de nós, imprime estatísticas de progresso
     if (nodes_explored % 5000000 == 0)
     {
         double elapsed = ((double)clock() / CLOCKS_PER_SEC);
@@ -262,6 +265,7 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
                nodes_explored, best_makespan, elapsed);
     }
 
+    // Se todos os jobs estão completos, verifica e atualiza a melhor solução
     if (all_jobs_complete(job_next_op))
     {
         int makespan = 0;
@@ -275,27 +279,22 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
         return;
     }
 
-    // Allow full depth exploration
+    // Limita a profundidade máxima da busca para evitar loops infinitos
     int max_reasonable_depth = num_jobs * num_machines;
     if (depth > max_reasonable_depth)
     {
         return;
     }
 
-    // Conservative dominance-based pruning (optional - can be disabled)
-    // if (is_dominated_state(job_completion, machine_completion, job_next_op))
-    // {
-    //     return;
-    // }
-
-    // Improved lower bound pruning
+    // Calcula um lower bound para o makespan a partir do estado atual
     int lower_bound = calculate_improved_lower_bound(job_completion, machine_completion, job_next_op);
     if (lower_bound >= best_makespan)
     {
+        // Poda: não vale a pena explorar este ramo
         return;
     }
 
-    // Enhanced job selection with priority scoring
+    // Estrutura para armazenar informações dos jobs disponíveis para ramificação
     typedef struct
     {
         int job;
@@ -310,6 +309,7 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
     JobInfo available_jobs[MAX_JOBS];
     int num_available = 0;
 
+    // Identifica todos os jobs que ainda têm operações a serem agendadas
     for (int j = 0; j < num_jobs; j++)
     {
         if (job_next_op[j] < num_machines)
@@ -326,11 +326,11 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
             available_jobs[num_available].machine = machine;
             available_jobs[num_available].op = op;
 
-            // Multi-criteria priority scoring
-            int urgency = job_remaining_time[j][op]; // More remaining work = higher priority
+            // Calcula uma prioridade para o job com base em urgência, gargalo e duração
+            int urgency = job_remaining_time[j][op];
             int bottleneck = 0;
 
-            // Check if this operation uses a busy machine (bottleneck detection)
+            // Conta quantas operações restantes usam a mesma máquina (gargalo)
             for (int other_j = 0; other_j < num_jobs; other_j++)
             {
                 for (int other_op = job_next_op[other_j]; other_op < num_machines; other_op++)
@@ -340,13 +340,12 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
                 }
             }
 
-            // Combine criteria: urgency (remaining work) + bottleneck factor + duration preference
             available_jobs[num_available].priority_score = urgency * 100 + bottleneck * 20 + duration * 5;
             num_available++;
         }
     }
 
-    // Sort by priority score (higher = better)
+    // Ordena os jobs disponíveis por prioridade (maior score primeiro)
     for (int i = 0; i < num_available - 1; i++)
     {
         for (int k = i + 1; k < num_available; k++)
@@ -360,16 +359,16 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
         }
     }
 
-    // Limit branching factor based on depth to control explosion
+    // Define o número máximo de ramos a explorar, reduzindo conforme a profundidade aumenta
     int max_branches;
     if (depth < 15)
-        max_branches = num_available; // Full branching for most depths
+        max_branches = num_available;
     else if (depth < 20)
-        max_branches = (num_available > 3) ? 3 : num_available; // Slight limiting at very deep levels
+        max_branches = (num_available > 3) ? 3 : num_available;
     else
-        max_branches = (num_available > 2) ? 2 : num_available; // Only limit at extremely deep levels
+        max_branches = (num_available > 2) ? 2 : num_available;
 
-    // Branch on jobs in order
+    // Para cada job disponível (até o limite de ramos), gera um novo estado e chama recursivamente
     for (int i = 0; i < max_branches; i++)
     {
         int j = available_jobs[i].job;
@@ -379,13 +378,12 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
         int start_time = available_jobs[i].earliest_start;
         int end_time = start_time + duration;
 
-        // Create new state
+        // Cria cópias dos vetores para o novo estado
         int new_schedule[MAX_JOBS][MAX_MACHINES];
         int new_job_completion[MAX_JOBS];
         int new_machine_completion[MAX_MACHINES];
         int new_job_next_op[MAX_JOBS];
 
-        // Copy current state
         for (int jj = 0; jj < num_jobs; jj++)
         {
             new_job_completion[jj] = job_completion[jj];
@@ -400,13 +398,13 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
             new_machine_completion[m] = machine_completion[m];
         }
 
-        // Apply the operation
+        // Atualiza o novo estado com a operação escolhida
         new_schedule[j][op] = start_time;
         new_job_completion[j] = end_time;
         new_machine_completion[machine] = end_time;
         new_job_next_op[j]++;
 
-        // Recursive call
+        // Chama recursivamente para o novo estado
         branch_and_bound(new_schedule, new_job_completion, new_machine_completion,
                          new_job_next_op, depth + 1);
     }
@@ -414,7 +412,7 @@ void branch_and_bound(int schedule[MAX_JOBS][MAX_MACHINES],
 
 int main(int argc, char **argv)
 {
-    // Check command line arguments
+    // Verifica se o número de argumentos está correto
     if (argc != 4)
     {
         printf("Uso: %s <input_file> <output_file> <metrics_file>\n", argv[0]);
@@ -422,29 +420,32 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // Lê os nomes dos ficheiros a partir dos argumentos
     const char *input_filename = argv[1];
     const char *output_filename = argv[2];
     const char *metrics_filename = argv[3];
 
+    // Exibe informações iniciais sobre a execução
     printf("=== OPTIMIZED SEQUENTIAL BRANCH AND BOUND ===\n");
     printf("Limite total de nos: %lldM\n", (long long)(MAX_TOTAL_NODES / 1000000));
-    printf("Arquivo de entrada: %s\n", input_filename);
-    printf("Arquivo de saida: %s\n", output_filename);
-    printf("Arquivo de metricas: %s\n\n", metrics_filename);
+    printf("Ficheiro de entrada: %s\n", input_filename);
+    printf("Ficheiro de saida: %s\n", output_filename);
+    printf("Ficheiro de metricas: %s\n\n", metrics_filename);
 
+    // Inicializa variáveis globais de controle
     nodes_explored = 0;
     global_start_time = (double)clock() / CLOCKS_PER_SEC;
 
+    // Lê os dados do problema do ficheiro de entrada
     read_input(input_filename);
 
-    // Obtem a melhor solução inicial
+    // Calcula o upper bound inicial usando uma heurística
     best_makespan = get_initial_upper_bound();
     printf("Upper bound inicial (heuristica): %d\n", best_makespan);
 
-    // Save the heuristic solution as initial best
+    // Gera o escalonamento heurístico inicial e guarda na variavel best_schedule
     int temp_job_completion[MAX_JOBS] = {0};
     int temp_machine_completion[MAX_MACHINES] = {0};
-
     for (int j = 0; j < num_jobs; j++)
     {
         for (int op = 0; op < num_machines; op++)
@@ -453,20 +454,18 @@ int main(int argc, char **argv)
             int duration = job_duration[j][op];
             int start_time = (temp_job_completion[j] > temp_machine_completion[machine]) ? temp_job_completion[j] : temp_machine_completion[machine];
 
-            best_schedule[j][op] = start_time; // Save the heuristic schedule
+            best_schedule[j][op] = start_time;
             temp_job_completion[j] = start_time + duration;
             temp_machine_completion[machine] = start_time + duration;
         }
     }
 
-    // Initialize arrays
-    // Inicializa os arrays de escalonamento, conclusão dos jobs e máquinas, e próximo operação de cada job
+    // Inicializa as estruturas para o algoritmo Branch and Bound
     int schedule[MAX_JOBS][MAX_MACHINES];
     int job_completion[MAX_JOBS];
     int machine_completion[MAX_MACHINES];
     int job_next_op[MAX_JOBS];
 
-    // Preenche os arrays com valores iniciais
     for (int j = 0; j < num_jobs; j++)
     {
         job_completion[j] = 0;
@@ -474,7 +473,6 @@ int main(int argc, char **argv)
         for (int op = 0; op < num_machines; op++)
         {
             schedule[j][op] = -1;
-            // Don't initialize best_schedule to -1, let the heuristic set it
         }
     }
     for (int m = 0; m < num_machines; m++)
@@ -483,16 +481,17 @@ int main(int argc, char **argv)
     }
 
     printf("Iniciando Optimized Branch and Bound...\n");
-    printf("Heuristica salva como solucao inicial.\n");
+    printf("Heuristica guardada como solucao inicial.\n");
 
+    // Marca o tempo de início da execução do Branch and Bound
     clock_t start_time = clock();
-    // Inicia a busca Branch and Bound
     branch_and_bound(schedule, job_completion, machine_completion, job_next_op, 0);
     clock_t end_time = clock();
 
+    // Calcula o tempo total de execução
     double elapsed = (double)(end_time - start_time) / CLOCKS_PER_SEC;
 
-    // Write results
+    // Guarda o melhor escalonamento encontrado no ficheiro de saída
     FILE *output = fopen(output_filename, "w");
     if (output)
     {
@@ -509,9 +508,10 @@ int main(int argc, char **argv)
     }
     else
     {
-        printf("Erro ao criar arquivo de saida: %s\n", output_filename);
+        printf("Erro ao criar ficheiro de saida: %s\n", output_filename);
     }
 
+    // Guarda as métricas de execução no ficheiro de métricas
     FILE *metrics = fopen(metrics_filename, "w");
     if (metrics)
     {
@@ -519,14 +519,15 @@ int main(int argc, char **argv)
         fprintf(metrics, "Makespan: %d\n", best_makespan);
         fprintf(metrics, "Nos explorados: %lld\n", nodes_explored);
         fprintf(metrics, "Algoritmo: Branch and Bound Sequencial\n");
-        fprintf(metrics, "Arquivo de entrada: %s\n", input_filename);
+        fprintf(metrics, "Ficheiro de entrada: %s\n", input_filename);
         fclose(metrics);
     }
     else
     {
-        printf("Erro ao criar arquivo de metricas: %s\n", metrics_filename);
+        printf("Erro ao criar ficheiro de metricas: %s\n", metrics_filename);
     }
 
+    // Exibe os resultados finais no terminal
     printf("\n=== RESULTADOS ===\n");
     printf("Melhor makespan: %d\n", best_makespan);
     printf("Tempo de execucao: %.4f segundos\n", elapsed);
@@ -538,15 +539,14 @@ int main(int argc, char **argv)
         printf("Job %d: ", j);
         for (int op = 0; op < num_machines; op++)
         {
-            // Show all operations, even if start time might be 0
             printf("Op%d(M%d,t=%d->%d) ", op, job_machine[j][op],
                    best_schedule[j][op], best_schedule[j][op] + job_duration[j][op]);
         }
         printf("\n");
     }
 
-    printf("\nResultados salvos em: %s\n", output_filename);
-    printf("Metricas salvas em: %s\n", metrics_filename);
+    printf("\nResultados guardados em: %s\n", output_filename);
+    printf("Metricas guardadas em: %s\n", metrics_filename);
 
     return 0;
 }

@@ -6,16 +6,13 @@
 #define MAX_JOBS 105
 #define MAX_MACHINES 105
 
-// Global problem data
 int num_jobs, num_machines;
 int job_machine[MAX_JOBS][MAX_MACHINES];
 int job_duration[MAX_JOBS][MAX_MACHINES];
 
-// Solution data
 int best_makespan;
 int best_schedule[MAX_JOBS][MAX_MACHINES];
 
-// Machine scheduling data
 typedef struct
 {
     int job;
@@ -29,7 +26,6 @@ typedef struct
 Operation machine_schedule[MAX_MACHINES][MAX_JOBS * MAX_MACHINES];
 int machine_op_count[MAX_MACHINES];
 
-// Temporary arrays for calculations
 int job_completion_time[MAX_JOBS];
 int machine_completion_time[MAX_MACHINES];
 int operation_start_time[MAX_JOBS][MAX_MACHINES];
@@ -70,7 +66,6 @@ void read_input(const char *input_filename)
 
 void initialize_solution()
 {
-    // Initialize all arrays
     for (int j = 0; j < num_jobs; j++)
     {
         job_completion_time[j] = 0;
@@ -90,10 +85,8 @@ void initialize_solution()
     best_makespan = INT_MAX;
 }
 
-// Calculate earliest start times for all operations
 void calculate_earliest_start_times()
 {
-    // Initialize
     for (int j = 0; j < num_jobs; j++)
     {
         job_completion_time[j] = 0;
@@ -108,7 +101,6 @@ void calculate_earliest_start_times()
         machine_completion_time[m] = 0;
     }
 
-    // Calculate earliest start times considering job precedence
     for (int j = 0; j < num_jobs; j++)
     {
         int current_time = 0;
@@ -121,7 +113,6 @@ void calculate_earliest_start_times()
     }
 }
 
-// Calculate machine workload (total processing time)
 int calculate_machine_workload(int machine)
 {
     int total_workload = 0;
@@ -138,13 +129,11 @@ int calculate_machine_workload(int machine)
     return total_workload;
 }
 
-// Schedule operations on a specific machine using Shortest Processing Time first
 void schedule_machine_operations(int machine)
 {
     Operation operations[MAX_JOBS * MAX_MACHINES];
     int op_count = 0;
 
-    // Collect all operations for this machine
     for (int j = 0; j < num_jobs; j++)
     {
         for (int op = 0; op < num_machines; op++)
@@ -161,19 +150,16 @@ void schedule_machine_operations(int machine)
         }
     }
 
-    // Sort operations by earliest start time, then by shortest processing time
     for (int i = 0; i < op_count - 1; i++)
     {
         for (int k = i + 1; k < op_count; k++)
         {
             int swap = 0;
 
-            // Primary sort: earliest start time
             if (operations[k].start_time < operations[i].start_time)
             {
                 swap = 1;
             }
-            // Secondary sort: shortest processing time for same start time
             else if (operations[k].start_time == operations[i].start_time &&
                      operations[k].duration < operations[i].duration)
             {
@@ -189,7 +175,6 @@ void schedule_machine_operations(int machine)
         }
     }
 
-    // Schedule operations on the machine
     int current_machine_time = 0;
     machine_op_count[machine] = op_count;
 
@@ -204,14 +189,12 @@ void schedule_machine_operations(int machine)
         machine_schedule[machine][i] = operations[i];
         current_machine_time = operations[i].end_time;
 
-        // Update the schedule
         best_schedule[operations[i].job][operations[i].operation] = actual_start;
     }
 
     machine_completion_time[machine] = current_machine_time;
 }
 
-// Update job completion times based on current schedule
 void update_job_completion_times()
 {
     for (int j = 0; j < num_jobs; j++)
@@ -228,7 +211,6 @@ void update_job_completion_times()
     }
 }
 
-// Calculate makespan
 int calculate_makespan()
 {
     int makespan = 0;
@@ -240,10 +222,8 @@ int calculate_makespan()
     return makespan;
 }
 
-// Try to improve the schedule by rescheduling a machine
 int try_improve_machine_schedule(int machine)
 {
-    // Save current state
     int saved_schedule[MAX_JOBS][MAX_MACHINES];
     for (int j = 0; j < num_jobs; j++)
     {
@@ -257,13 +237,9 @@ int try_improve_machine_schedule(int machine)
 
     printf("Tentando melhorar escalonamento da maquina %d...\n", machine);
 
-    // Recalculate earliest start times
     calculate_earliest_start_times();
-
-    // Reschedule this machine
     schedule_machine_operations(machine);
 
-    // Update other machines to respect the new schedule
     for (int m = 0; m < num_machines; m++)
     {
         if (m != machine)
@@ -279,11 +255,10 @@ int try_improve_machine_schedule(int machine)
     {
         best_makespan = new_makespan;
         printf("Melhoria encontrada! Novo makespan: %d\n", best_makespan);
-        return 1; // Improvement found
+        return 1;
     }
     else
     {
-        // Restore previous state
         for (int j = 0; j < num_jobs; j++)
         {
             for (int op = 0; op < num_machines; op++)
@@ -293,22 +268,19 @@ int try_improve_machine_schedule(int machine)
         }
         best_makespan = saved_makespan;
         printf("Nenhuma melhoria encontrada para maquina %d\n", machine);
-        return 0; // No improvement
+        return 0;
     }
 }
 
-// Main Shifting Bottleneck Algorithm - Sequential Version
 void shifting_bottleneck_algorithm()
 {
     printf("=== ALGORITMO SHIFTING BOTTLENECK SEQUENCIAL ===\n\n");
 
     initialize_solution();
 
-    // Phase 1: Build initial schedule
     printf("Fase 1: Construindo escalonamento inicial...\n");
     calculate_earliest_start_times();
 
-    // Schedule all machines in order of workload (heaviest first)
     int machine_order[MAX_MACHINES];
     int machine_workload[MAX_MACHINES];
 
@@ -318,7 +290,6 @@ void shifting_bottleneck_algorithm()
         machine_workload[m] = calculate_machine_workload(m);
     }
 
-    // Sort machines by workload (descending)
     for (int i = 0; i < num_machines - 1; i++)
     {
         for (int j = i + 1; j < num_machines; j++)
@@ -338,15 +309,12 @@ void shifting_bottleneck_algorithm()
         printf("Maquina %d (carga: %d)\n", machine_order[i], machine_workload[machine_order[i]]);
     }
 
-    // Schedule machines in order - SEQUENTIAL
     for (int i = 0; i < num_machines; i++)
     {
         int machine = machine_order[i];
         printf("\nEscalonando maquina %d...\n", machine);
         schedule_machine_operations(machine);
         update_job_completion_times();
-
-        // Recalculate earliest start times for remaining operations
         calculate_earliest_start_times();
     }
 
@@ -354,7 +322,6 @@ void shifting_bottleneck_algorithm()
     best_makespan = calculate_makespan();
     printf("\nMakespan inicial: %d\n", best_makespan);
 
-    // Phase 2: Improvement phase - SEQUENTIAL
     printf("\nFase 2: Melhorando escalonamento (sequencial)...\n");
     int iteration = 0;
     int improved = 1;
@@ -365,7 +332,6 @@ void shifting_bottleneck_algorithm()
         iteration++;
         printf("\nIteracao %d de melhoria:\n", iteration);
 
-        // Try to improve each machine sequentially
         for (int m = 0; m < num_machines; m++)
         {
             if (try_improve_machine_schedule(m))
@@ -387,7 +353,6 @@ void shifting_bottleneck_algorithm()
 
 int main(int argc, char **argv)
 {
-    // Check command line arguments
     if (argc != 4)
     {
         printf("Uso: %s <input_file> <output_file> <metrics_file>\n", argv[0]);
@@ -420,7 +385,6 @@ int main(int argc, char **argv)
     clock_t end_time = clock();
     double elapsed = (double)(end_time - start_time) / CLOCKS_PER_SEC;
 
-    // Output
     fprintf(output, "%d\n", best_makespan);
     for (int j = 0; j < num_jobs; j++)
     {
