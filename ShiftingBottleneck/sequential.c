@@ -3,16 +3,18 @@
 #include <time.h>
 #include <limits.h>
 
-#define MAX_JOBS 105
-#define MAX_MACHINES 105
+#define MAX_JOBS 105     // Número máximo de jobs
+#define MAX_MACHINES 105 // Número máximo de máquinas
 
+// Variáveis globais para armazenar dados do problema
 int num_jobs, num_machines;
-int job_machine[MAX_JOBS][MAX_MACHINES];
-int job_duration[MAX_JOBS][MAX_MACHINES];
+int job_machine[MAX_JOBS][MAX_MACHINES];  // Máquina de cada operação de cada job
+int job_duration[MAX_JOBS][MAX_MACHINES]; // Duração de cada operação de cada job
 
-int best_makespan;
-int best_schedule[MAX_JOBS][MAX_MACHINES];
+int best_makespan;                         // Melhor makespan encontrado
+int best_schedule[MAX_JOBS][MAX_MACHINES]; // Melhor escalonamento encontrado
 
+// Estrutura para representar uma operação
 typedef struct
 {
     int job;
@@ -23,25 +25,27 @@ typedef struct
     int duration;
 } Operation;
 
-Operation machine_schedule[MAX_MACHINES][MAX_JOBS * MAX_MACHINES];
-int machine_op_count[MAX_MACHINES];
+Operation machine_schedule[MAX_MACHINES][MAX_JOBS * MAX_MACHINES]; // Escalonamento por máquina
+int machine_op_count[MAX_MACHINES];                                // Número de operações por máquina
 
-int job_completion_time[MAX_JOBS];
-int machine_completion_time[MAX_MACHINES];
-int operation_start_time[MAX_JOBS][MAX_MACHINES];
+int job_completion_time[MAX_JOBS];                // Tempo de conclusão de cada job
+int machine_completion_time[MAX_MACHINES];        // Tempo de conclusão de cada máquina
+int operation_start_time[MAX_JOBS][MAX_MACHINES]; // Tempo de início de cada operação
 
+// Função para ler o ficheiro de input
 void read_input(const char *input_filename)
 {
     FILE *input = fopen(input_filename, "r");
     if (!input)
     {
-        printf("ERRO: Arquivo %s nao encontrado\n", input_filename);
+        printf("ERRO: Ficheiro %s nao encontrado\n", input_filename);
         exit(1);
     }
 
     fscanf(input, "%d %d", &num_jobs, &num_machines);
     printf("Problema: %d jobs, %d machines\n", num_jobs, num_machines);
 
+    // Leitura das operações de cada job
     for (int j = 0; j < num_jobs; j++)
     {
         for (int op = 0; op < num_machines; op++)
@@ -51,6 +55,7 @@ void read_input(const char *input_filename)
     }
     fclose(input);
 
+    // Impressão dos dados lidos
     printf("\nDados do problema:\n");
     for (int j = 0; j < num_jobs; j++)
     {
@@ -64,6 +69,7 @@ void read_input(const char *input_filename)
     printf("\n");
 }
 
+// Inicializa as estruturas de dados para uma nova solução
 void initialize_solution()
 {
     for (int j = 0; j < num_jobs; j++)
@@ -85,6 +91,7 @@ void initialize_solution()
     best_makespan = INT_MAX;
 }
 
+// Calcula os tempos mais cedo possíveis de início das operações
 void calculate_earliest_start_times()
 {
     for (int j = 0; j < num_jobs; j++)
@@ -101,6 +108,7 @@ void calculate_earliest_start_times()
         machine_completion_time[m] = 0;
     }
 
+    // Para cada job, calcula o início de cada operação sequencialmente
     for (int j = 0; j < num_jobs; j++)
     {
         int current_time = 0;
@@ -113,6 +121,7 @@ void calculate_earliest_start_times()
     }
 }
 
+// Calcula a carga de trabalho total de uma máquina
 int calculate_machine_workload(int machine)
 {
     int total_workload = 0;
@@ -129,11 +138,13 @@ int calculate_machine_workload(int machine)
     return total_workload;
 }
 
+// Escalona as operações de uma máquina
 void schedule_machine_operations(int machine)
 {
     Operation operations[MAX_JOBS * MAX_MACHINES];
     int op_count = 0;
 
+    // Seleciona operações que pertencem à máquina
     for (int j = 0; j < num_jobs; j++)
     {
         for (int op = 0; op < num_machines; op++)
@@ -150,6 +161,7 @@ void schedule_machine_operations(int machine)
         }
     }
 
+    // Ordena operações por tempo de início e duração
     for (int i = 0; i < op_count - 1; i++)
     {
         for (int k = i + 1; k < op_count; k++)
@@ -178,6 +190,7 @@ void schedule_machine_operations(int machine)
     int current_machine_time = 0;
     machine_op_count[machine] = op_count;
 
+    // Agenda as operações na máquina
     for (int i = 0; i < op_count; i++)
     {
         int earliest_start = operation_start_time[operations[i].job][operations[i].operation];
@@ -195,6 +208,7 @@ void schedule_machine_operations(int machine)
     machine_completion_time[machine] = current_machine_time;
 }
 
+// Atualiza o tempo de conclusão de cada job
 void update_job_completion_times()
 {
     for (int j = 0; j < num_jobs; j++)
@@ -211,6 +225,7 @@ void update_job_completion_times()
     }
 }
 
+// Calcula o makespan atual
 int calculate_makespan()
 {
     int makespan = 0;
@@ -222,6 +237,7 @@ int calculate_makespan()
     return makespan;
 }
 
+// Tenta melhorar o escalonamento de uma máquina
 int try_improve_machine_schedule(int machine)
 {
     int saved_schedule[MAX_JOBS][MAX_MACHINES];
@@ -240,6 +256,7 @@ int try_improve_machine_schedule(int machine)
     calculate_earliest_start_times();
     schedule_machine_operations(machine);
 
+    // Reescalona as outras máquinas
     for (int m = 0; m < num_machines; m++)
     {
         if (m != machine)
@@ -259,6 +276,7 @@ int try_improve_machine_schedule(int machine)
     }
     else
     {
+        // Restaura o escalonamento anterior
         for (int j = 0; j < num_jobs; j++)
         {
             for (int op = 0; op < num_machines; op++)
@@ -272,6 +290,7 @@ int try_improve_machine_schedule(int machine)
     }
 }
 
+// Algoritmo principal Shifting Bottleneck
 void shifting_bottleneck_algorithm()
 {
     printf("=== ALGORITMO SHIFTING BOTTLENECK SEQUENCIAL ===\n\n");
@@ -290,6 +309,7 @@ void shifting_bottleneck_algorithm()
         machine_workload[m] = calculate_machine_workload(m);
     }
 
+    // Ordena máquinas por carga de trabalho (decrescente)
     for (int i = 0; i < num_machines - 1; i++)
     {
         for (int j = i + 1; j < num_machines; j++)
@@ -309,6 +329,7 @@ void shifting_bottleneck_algorithm()
         printf("Maquina %d (carga: %d)\n", machine_order[i], machine_workload[machine_order[i]]);
     }
 
+    // Escalona cada máquina pela ordem definida
     for (int i = 0; i < num_machines; i++)
     {
         int machine = machine_order[i];
@@ -326,6 +347,7 @@ void shifting_bottleneck_algorithm()
     int iteration = 0;
     int improved = 1;
 
+    // Loop de melhoria até não haver melhorias ou atingir limite de iterações
     while (improved && iteration < 10)
     {
         improved = 0;
@@ -351,6 +373,7 @@ void shifting_bottleneck_algorithm()
     printf("Iteracoes de melhoria: %d\n", iteration);
 }
 
+// Função principal
 int main(int argc, char **argv)
 {
     if (argc != 4)
@@ -375,16 +398,17 @@ int main(int argc, char **argv)
     clock_t start_time = clock();
 
     printf("=== SHIFTING BOTTLENECK SEQUENCIAL PARA JOB SHOP SCHEDULING ===\n");
-    printf("Arquivo de entrada: %s\n", input_filename);
-    printf("Arquivo de saida: %s\n", output_filename);
-    printf("Arquivo de metricas: %s\n\n", metrics_filename);
+    printf("Ficheiro de entrada: %s\n", input_filename);
+    printf("Ficheiro de saida: %s\n", output_filename);
+    printf("Ficheiro de metricas: %s\n\n", metrics_filename);
 
-    read_input(input_filename);
-    shifting_bottleneck_algorithm();
+    read_input(input_filename);      // Lê dados do problema
+    shifting_bottleneck_algorithm(); // Executa o algoritmo principal
 
     clock_t end_time = clock();
     double elapsed = (double)(end_time - start_time) / CLOCKS_PER_SEC;
 
+    // Escreve resultados no ficheiro de output
     fprintf(output, "%d\n", best_makespan);
     for (int j = 0; j < num_jobs; j++)
     {
@@ -394,14 +418,16 @@ int main(int argc, char **argv)
         }
         fprintf(output, "\n");
     }
+    // Escreve métricas no ficheiro de métricas
     fprintf(metrics, "Tempo de execucao: %.4f segundos\n", elapsed);
     fprintf(metrics, "Makespan: %d\n", best_makespan);
     fprintf(metrics, "Algoritmo: Shifting Bottleneck Sequencial\n");
-    fprintf(metrics, "Arquivo de entrada: %s\n", input_filename);
+    fprintf(metrics, "Ficheiro de entrada: %s\n", input_filename);
 
     fclose(output);
     fclose(metrics);
 
+    // Impressão dos resultados finais
     printf("\n=== RESULTADOS ===\n");
     printf("Melhor makespan: %d\n", best_makespan);
     printf("Tempo de execucao: %.4f segundos\n", elapsed);
