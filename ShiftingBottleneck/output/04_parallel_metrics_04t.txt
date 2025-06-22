@@ -1,0 +1,7 @@
+Tempo de execucao (CPU): 1.6692 segundos
+Tempo de execucao (Wall): 0.4851 segundos
+Makespan: 1172
+Arquivo de entrada: ../0inputs/med100.jss
+Algoritmo: Shifting Bottleneck Paralelo
+Threads utilizadas: 4
+Speedup: 3.44x

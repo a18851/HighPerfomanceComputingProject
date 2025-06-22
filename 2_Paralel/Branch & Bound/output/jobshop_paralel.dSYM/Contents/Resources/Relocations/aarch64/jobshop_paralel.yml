@@ -1,5 +1,0 @@
----
-triple:          'arm64-apple-darwin'
-binary-path:     '/Users/ricardofernandes/Code/HPX/HighPerfomanceComputingProject/2_Paralel/Branch & Bound/output/jobshop_paralel'
-relocations:     []
-...
