@@ -1,0 +1,9 @@
+File,Path,Input,Algorithm,Makespan,Exec Time (Wall),Exec Time (CPU),Exec Time (Single),Threads,Speedup,Exec Time,Algorithm Group
+01_seq_metrics.txt,../BnB/output\01_seq_metrics.txt,Arquivo,Branch and Bound Sequencial,46,,,2949.1094,1,1.0,2949.1094,Branch and Bound
+01_seq_metrics.txt,../ShiftingBottleneck/output\01_seq_metrics.txt,Arquivo,Shifting Bottleneck Sequencial,1231,,,0.4064,1,1.0,0.4064,Shifting Bottleneck
+03_parallel_metrics_02t.txt,../ShiftingBottleneck/output\03_parallel_metrics_02t.txt,Arquivo,Shifting Bottleneck Paralelo,1172,0.5802,1.0526,,2,1.81,0.5802,Shifting Bottleneck
+03_parallel_metrics_02t.txt,../BnB/output\03_parallel_metrics_02t.txt,Arquivo,Branch and Bound Paralelo (Limite Fixo),46,1795.3265,3586.1862,,2,2.0,1795.3265,Branch and Bound
+04_parallel_metrics_04t.txt,../ShiftingBottleneck/output\04_parallel_metrics_04t.txt,Arquivo,Shifting Bottleneck Paralelo,1172,0.4851,1.6692,,4,3.44,0.4851,Shifting Bottleneck
+04_parallel_metrics_04t.txt,../BnB/output\04_parallel_metrics_04t.txt,Arquivo,Branch and Bound Paralelo (Limite Fixo),46,1274.9046,5076.4209,,4,3.98,1274.9046,Branch and Bound
+02_parallel_metrics.txt,../BnB/output\02_parallel_metrics.txt,Arquivo,Branch and Bound Paralelo (Limite Fixo),46,1662.1602,8095.41,,8,4.87,1662.1602,Branch and Bound
+02_parallel_metrics.txt,../ShiftingBottleneck/output\02_parallel_metrics.txt,Arquivo,Shifting Bottleneck Paralelo,1172,0.4542,2.7609,,8,6.08,0.4542,Shifting Bottleneck

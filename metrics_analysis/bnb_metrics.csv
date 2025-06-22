@@ -1,0 +1,5 @@
+File,Path,Input,Algorithm,Makespan,Exec Time (Wall),Exec Time (CPU),Exec Time (Single),Threads,Speedup,Exec Time,Efficiency,Algorithm Group
+01_seq_metrics.txt,../BnB/output\01_seq_metrics.txt,Arquivo,Branch and Bound Sequencial,46,,,2949.1094,1,1.0,2949.1094,1.0,Branch and Bound
+02_parallel_metrics.txt,../BnB/output\02_parallel_metrics.txt,Arquivo,Branch and Bound Paralelo (Limite Fixo),46,1662.1602,8095.41,,8,4.87,1662.1602,0.60875,Branch and Bound
+03_parallel_metrics_02t.txt,../BnB/output\03_parallel_metrics_02t.txt,Arquivo,Branch and Bound Paralelo (Limite Fixo),46,1795.3265,3586.1862,,2,2.0,1795.3265,1.0,Branch and Bound
+04_parallel_metrics_04t.txt,../BnB/output\04_parallel_metrics_04t.txt,Arquivo,Branch and Bound Paralelo (Limite Fixo),46,1274.9046,5076.4209,,4,3.98,1274.9046,0.995,Branch and Bound
